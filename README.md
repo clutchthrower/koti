@@ -46,11 +46,14 @@ flutter run
 
 ### Releasing
 
-1. Bump `version:` in `pubspec.yaml` (e.g. `1.1.0+2`).
-2. `flutter build apk --release` (signing config comes from the untracked
-   `android/key.properties`).
-3. Create a GitHub release tagged `v1.1.0` with the APK attached. Tablets show a blocking
-   update screen within 6 hours.
+Actions tab → **Release** → *Run workflow* → enter a version like `1.1.0` (plus optional
+notes). CI bumps `pubspec.yaml`, runs the tests, builds a signed APK (keystore lives in
+repo secrets), tags `v1.1.0`, and publishes the release — tablets show a blocking update
+screen within 6 hours.
+
+Manual fallback: bump `version:` in `pubspec.yaml`, `flutter build apk --release`
+(signing from the untracked `android/key.properties`), then create a `vX.Y.Z` release
+with the APK attached.
 
 ## Credits
 

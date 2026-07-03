@@ -1,0 +1,86 @@
+# One-click release: Actions tab → "Release" → Run workflow → enter a
+# version like 1.1.0. The workflow bumps pubspec.yaml, builds a signed
+# release APK (keystore comes from repo secrets), commits the bump, tags
+# vX.Y.Z, and publishes a GitHub release with the APK attached — which
+# every tablet's in-app updater picks up within 6 hours.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 1.1.0)"
+        required: true
+      notes:
+        description: "Release notes (optional)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.35.7"
+          cache: true
+
+      - name: Validate version input
+        run: |
+          if ! echo "${{ github.event.inputs.version }}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Version must look like 1.2.3"; exit 1
+          fi
+
+      - name: Bump pubspec version
+        run: |
+          sed -i "s/^version: .*/version: ${{ github.event.inputs.version }}+${{ github.run_number }}/" pubspec.yaml
+          grep '^version:' pubspec.yaml
+
+      - name: Restore signing keys from secrets
+        run: |
+          mkdir -p android/keys
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/keys/hemma-release.jks
+          cat > android/key.properties <<EOF
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storeFile=keys/hemma-release.jks
+          EOF
+
+      - run: flutter pub get
+
+      - run: flutter test
+
+      - run: flutter build apk --release
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pubspec.yaml
+          git commit -m "Release v${{ github.event.inputs.version }}"
+          git push
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${{ github.event.inputs.version }}"
+          cp build/app/outputs/flutter-apk/app-release.apk "hemma-v$V.apk"
+          NOTES="${{ github.event.inputs.notes }}"
+          [ -z "$NOTES" ] && NOTES="Hemma Native $V"
+          gh release create "v$V" "hemma-v$V.apk" \
+            --title "Hemma Native $V" \
+            --notes "$NOTES" \
+            --target "$(git rev-parse HEAD)"
