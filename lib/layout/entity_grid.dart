@@ -157,17 +157,22 @@ class EntityGrid extends StatelessWidget {
     final gutter = mode == DeviceMode.desktop ? size.width * 0.08 : size.width * 0.04;
 
     // Single row hugging the bottom edge, starting at the page gutter —
-    // matches the reference screenshots' card strip. While editing, smart
-    // sorting is suspended so tiles stay put under the user's finger.
+    // matches the reference screenshots' card strip. The gutter lives
+    // INSIDE the scroll view (as scroll padding), not outside it: an outer
+    // Padding would clip scrolled-past cards at the gutter edge instead of
+    // letting them slide off the physical screen edge. While editing,
+    // smart sorting is suspended so tiles stay put under the user's finger.
+    final stripPadding = EdgeInsets.only(left: gutter - 4, right: gutter - 4);
     return Align(
       alignment: Alignment.bottomLeft,
       child: Padding(
-        padding: EdgeInsets.only(bottom: 20, left: gutter),
+        padding: const EdgeInsets.only(bottom: 20),
         child: SizedBox(
           height: tile.height,
           child: editing
               ? SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
+                  padding: stripPadding,
                   child: Row(
                     children: [
                       for (var i = 0; i < cards.length; i++)
@@ -191,6 +196,7 @@ class EntityGrid extends StatelessWidget {
                   items: cards,
                   isActive: (card) => _isActive(context, card),
                   sortingEnabled: themeController.smartRowSortingEnabled,
+                  padding: stripPadding,
                   itemBuilder: (context, card, position) => Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: SizedBox(

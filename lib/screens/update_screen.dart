@@ -102,7 +102,7 @@ class _UpdateScreenState extends State<UpdateScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Hemma ${widget.currentVersion} → ${widget.info.version}',
+                    'Koti ${widget.currentVersion} → ${widget.info.version}',
                     style: const TextStyle(color: Colors.white54, fontSize: 15),
                   ),
                   if (widget.info.notes.isNotEmpty) ...[

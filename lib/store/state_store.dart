@@ -102,12 +102,22 @@ class StateStore extends ChangeNotifier {
     }
   }
 
+  /// Test seam: capture service calls instead of hitting the network.
+  @visibleForTesting
+  void Function(String domain, String service, Map<String, dynamic>? data,
+      String? entityId)? debugServiceInterceptor;
+
   Future<void> callService(
     String domain,
     String service, {
     Map<String, dynamic>? data,
     String? entityId,
   }) async {
+    final interceptor = debugServiceInterceptor;
+    if (interceptor != null) {
+      interceptor(domain, service, data, entityId);
+      return;
+    }
     if (ws.status == HaConnectionStatus.connected) {
       await ws.callService(
         domain,

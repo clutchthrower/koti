@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
-import '../store/settings_store.dart';
+import '../popups/camera_popup.dart';
 import '../widgets/entity_watcher.dart';
 import 'base_entity_card.dart';
 
@@ -16,32 +15,24 @@ class DoorbellCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final settings = Provider.of<SettingsStore>(context, listen: false);
     return EntityWatcher(
       entityIds: [entityId],
       builder: (context, states) {
         final entity = states[entityId];
+        final name =
+            label ?? entity?.attr<String>('friendly_name', entityId) ?? entityId;
+        // A doorbell backed by a camera entity opens the live view; a
+        // binary_sensor doorbell is status-only.
+        final isCamera = entityId.startsWith('camera.');
         return HemmaEntityCard(
           iconName: 'doorbell',
-          label: label ?? entity?.attr<String>('friendly_name', entityId) ?? entityId,
-          stateText: entity?.state ?? 'Idle',
+          label: name,
+          stateText: isCamera ? 'Tap for live view' : (entity?.state ?? 'Idle'),
           active: entity?.state == 'on',
           position: position,
-          onTap: () {
-            final url =
-                '${settings.activeUrl}/api/camera_proxy/$entityId';
-            showDialog(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: const Text('Doorbell Camera'),
-                content: Image.network(
-                  url,
-                  headers: {'Authorization': 'Bearer ${settings.accessToken}'},
-                  errorBuilder: (_, __, ___) => const Text('Camera unavailable'),
-                ),
-              ),
-            );
-          },
+          onTap: isCamera
+              ? () => showCameraPopup(context, entityId: entityId, title: name)
+              : null,
         );
       },
     );

@@ -111,7 +111,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 children: [
                   const Spacer(flex: 2),
                   const Text(
-                    'Hemma',
+                    'Koti',
                     style: TextStyle(
                       fontFamily: 'Hanken Grotesk',
                       fontWeight: FontWeight.w700,

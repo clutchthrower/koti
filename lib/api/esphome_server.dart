@@ -105,7 +105,7 @@ class EsphomeServer {
         final w = _ProtoWriter()
           ..varintField(1, 1) // api major
           ..varintField(2, 10) // api minor
-          ..stringField(3, 'Hemma Bluetooth Proxy')
+          ..stringField(3, 'Koti Bluetooth Proxy')
           ..stringField(4, name);
         client.add(_frame(2, w.bytes));
         break;
@@ -127,8 +127,8 @@ class EsphomeServer {
           // anything below its supported minimum (2026.5.1 as of now), so
           // track something current. Bump when HA complains again.
           ..stringField(4, '2026.6.0')
-          ..stringField(6, 'Hemma Tablet')
-          ..stringField(12, 'Hemma')
+          ..stringField(6, 'Koti Tablet')
+          ..stringField(12, 'Koti')
           ..stringField(13, friendlyName)
           ..varintField(15, _featureFlags)
           ..stringField(18, bluetoothMacAddress);

@@ -1,0 +1,16 @@
+{
+  "name": "{name}",
+  "icon": "power_on",
+  "entity": "switch.washer",
+  "state": "{state|title}",
+  "activeWhen": "state == 'on'",
+  "tap": { "action": "popup" },
+  "quick": { "icon": "power_on", "action": { "action": "toggle" } },
+  "popup": [
+    { "type": "entity" },
+    { "type": "divider" },
+    { "type": "toggle", "label": "Power" },
+    { "type": "text", "text": "Uses {sensor.washer_power.state|round} W right now", "size": "small",
+      "showWhen": "state == 'on'" }
+  ]
+}

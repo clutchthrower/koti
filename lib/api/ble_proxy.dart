@@ -34,16 +34,16 @@ class BleProxy {
     if (running) return 'ok';
     final mac = macFrom(deviceId);
     final server = EsphomeServer(
-      name: 'hemma-tablet',
-      friendlyName: 'Hemma Tablet',
+      name: 'koti-tablet',
+      friendlyName: 'Koti Tablet',
       macAddress: mac,
       bluetoothMacAddress: macFrom(deviceId, variant: 1),
     );
     await server.start();
 
     final status = await _channel.invokeMethod<String>('startBleProxy', {
-          'name': 'hemma-tablet',
-          'friendlyName': 'Hemma Tablet',
+          'name': 'koti-tablet',
+          'friendlyName': 'Koti Tablet',
           'mac': mac,
           'port': EsphomeServer.port,
         }) ??

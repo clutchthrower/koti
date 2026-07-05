@@ -20,6 +20,10 @@ class SmartRow<T> extends StatefulWidget {
   final Duration holdDuration;
   final Axis direction;
 
+  /// Scroll padding (horizontal rows only) — keeps the page gutter inside
+  /// the scroll view so cards scroll all the way to the screen edge.
+  final EdgeInsetsGeometry? padding;
+
   const SmartRow({
     super.key,
     required this.items,
@@ -28,6 +32,7 @@ class SmartRow<T> extends StatefulWidget {
     this.sortingEnabled = true,
     this.holdDuration = const Duration(milliseconds: 2500),
     this.direction = Axis.horizontal,
+    this.padding,
   });
 
   @override
@@ -101,6 +106,7 @@ class _SmartRowState<T> extends State<SmartRow<T>> {
     return widget.direction == Axis.horizontal
         ? SingleChildScrollView(
             scrollDirection: Axis.horizontal,
+            padding: widget.padding,
             child: Row(children: children),
           )
         : Column(children: children);

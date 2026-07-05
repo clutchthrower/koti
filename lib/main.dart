@@ -52,7 +52,7 @@ class HemmaApp extends StatefulWidget {
   State<HemmaApp> createState() => _HemmaAppState();
 }
 
-class _HemmaAppState extends State<HemmaApp> {
+class _HemmaAppState extends State<HemmaApp> with WidgetsBindingObserver {
   StateStore? _stateStore;
   HelperStore? _helperStore;
   final ThemeController _themeController = ThemeController();
@@ -70,8 +70,18 @@ class _HemmaAppState extends State<HemmaApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     widget.settings.addListener(_onSettingsChanged);
     _init();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Coming back from another app/dialog can leave the system bars stuck
+    // visible — re-hide them.
+    if (state == AppLifecycleState.resumed) {
+      _themeController.reassertFullscreen();
+    }
   }
 
   void _onSettingsChanged() {
@@ -178,6 +188,7 @@ class _HemmaAppState extends State<HemmaApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.settings.removeListener(_onSettingsChanged);
     _updateTimer?.cancel();
     unawaited(_bleProxy.stop());
@@ -200,7 +211,7 @@ class _HemmaAppState extends State<HemmaApp> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Hemma',
+                  'Koti',
                   style: TextStyle(
                     fontFamily: 'Hanken Grotesk',
                     fontWeight: FontWeight.w700,
@@ -263,7 +274,7 @@ class _HemmaAppState extends State<HemmaApp> {
           return HemmaTheme(
             tokens: tokens,
             child: MaterialApp(
-              title: 'Hemma',
+              title: 'Koti',
               debugShowCheckedModeBanner: false,
               theme: ThemeData(
                 fontFamily: 'Hanken Grotesk',
@@ -345,7 +356,7 @@ class _EmptyRoomsPromptState extends State<_EmptyRoomsPrompt> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Hemma')),
+      appBar: AppBar(title: const Text('Koti')),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),

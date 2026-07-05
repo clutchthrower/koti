@@ -8,6 +8,7 @@ enum HemmaCardType {
   lock,
   motion,
   doorbell,
+  camera,
   vacuum,
   curtain,
   energy,
@@ -25,12 +26,18 @@ class CardConfig {
   final List<String> extraEntityIds; // e.g. multi-sensor motion, group members
   final String? labelOverride;
 
+  /// For [HemmaCardType.custom]: the user-authored card design as decoded
+  /// JSON (see docs/CARD_FORMAT.md). Kept as a raw map so configs written
+  /// by newer app versions survive a round-trip through older ones.
+  final Map<String, dynamic>? customSpec;
+
   const CardConfig({
     required this.id,
     required this.type,
     required this.entityId,
     this.extraEntityIds = const [],
     this.labelOverride,
+    this.customSpec,
   });
 
   Map<String, dynamic> toJson() => {
@@ -39,6 +46,7 @@ class CardConfig {
         'entityId': entityId,
         'extraEntityIds': extraEntityIds,
         'labelOverride': labelOverride,
+        if (customSpec != null) 'customSpec': customSpec,
       };
 
   factory CardConfig.fromJson(Map<String, dynamic> json) => CardConfig(
@@ -50,6 +58,7 @@ class CardConfig {
         entityId: json['entityId'] as String? ?? '',
         extraEntityIds: (json['extraEntityIds'] as List?)?.cast<String>() ?? const [],
         labelOverride: json['labelOverride'] as String?,
+        customSpec: (json['customSpec'] as Map?)?.cast<String, dynamic>(),
       );
 }
 

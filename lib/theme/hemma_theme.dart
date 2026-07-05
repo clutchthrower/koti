@@ -32,6 +32,11 @@ class ThemeController extends ChangeNotifier {
   /// Hide Android's status/navigation bars (wall-dashboard look).
   bool fullscreenEnabled = true;
 
+  /// Hold Android's FLAG_KEEP_SCREEN_ON so the display never sleeps —
+  /// needed on devices whose system screen timeout maxes out at 15
+  /// minutes. The screensaver (not the OS) protects the panel instead.
+  bool keepScreenOnEnabled = true;
+
   /// What the screensaver shows and how it moves (motion is always on —
   /// a static image would burn into an always-on panel).
   bool screensaverShowClock = true;
@@ -48,6 +53,7 @@ class ThemeController extends ChangeNotifier {
   static const _kParallax = 'hemma_theme_parallax';
   static const _kScreensaver = 'hemma_theme_screensaver_minutes';
   static const _kFullscreen = 'hemma_theme_fullscreen';
+  static const _kKeepScreenOn = 'hemma_theme_keep_screen_on';
   static const _kSaverClock = 'hemma_theme_saver_clock';
   static const _kSaverWeather = 'hemma_theme_saver_weather';
   static const _kSaverMotion = 'hemma_theme_saver_motion';
@@ -71,6 +77,8 @@ class ThemeController extends ChangeNotifier {
     parallaxEnabled = prefs.getBool(_kParallax) ?? true;
     screensaverTimeoutMinutes = prefs.getInt(_kScreensaver) ?? 0;
     fullscreenEnabled = prefs.getBool(_kFullscreen) ?? true;
+    keepScreenOnEnabled = prefs.getBool(_kKeepScreenOn) ?? true;
+    _applyKeepScreenOn();
     screensaverShowClock = prefs.getBool(_kSaverClock) ?? true;
     screensaverShowWeather = prefs.getBool(_kSaverWeather) ?? true;
     screensaverMotion = ScreensaverMotion.values.firstWhere(
@@ -85,6 +93,38 @@ class ThemeController extends ChangeNotifier {
     SystemChrome.setEnabledSystemUIMode(
       fullscreenEnabled ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge,
     );
+    // immersiveSticky alone isn't sticky enough in practice: the keyboard,
+    // system dialogs, or a resume can bring the bars back for good on some
+    // devices (seen on the LG wall tablet). Whenever Android reports the
+    // bars became visible, quietly hide them again a few seconds later.
+    SystemChrome.setSystemUIChangeCallback(!fullscreenEnabled
+        ? null
+        : (visible) async {
+            if (!visible) return;
+            await Future.delayed(const Duration(seconds: 3));
+            if (fullscreenEnabled) {
+              await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+            }
+          });
+  }
+
+  /// Re-hides the system bars if fullscreen is on — called on app resume.
+  void reassertFullscreen() {
+    if (fullscreenEnabled) _applyFullscreen();
+  }
+
+  void _applyKeepScreenOn() {
+    // No-op off Android (tests, desktop): the channel simply isn't there.
+    const MethodChannel('hemma/native')
+        .invokeMethod('setKeepScreenOn', {'on': keepScreenOnEnabled})
+        .catchError((_) => null);
+  }
+
+  void setKeepScreenOnEnabled(bool v) {
+    keepScreenOnEnabled = v;
+    _applyKeepScreenOn();
+    notifyListeners();
+    _save();
   }
 
   Future<void> _save() async {
@@ -99,6 +139,7 @@ class ThemeController extends ChangeNotifier {
     await prefs.setBool(_kParallax, parallaxEnabled);
     await prefs.setInt(_kScreensaver, screensaverTimeoutMinutes);
     await prefs.setBool(_kFullscreen, fullscreenEnabled);
+    await prefs.setBool(_kKeepScreenOn, keepScreenOnEnabled);
     await prefs.setBool(_kSaverClock, screensaverShowClock);
     await prefs.setBool(_kSaverWeather, screensaverShowWeather);
     await prefs.setString(_kSaverMotion, screensaverMotion.name);

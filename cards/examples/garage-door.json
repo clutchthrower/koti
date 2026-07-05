@@ -1,0 +1,16 @@
+{
+  "name": "Garage",
+  "icon": "door_open",
+  "entity": "cover.garage_door",
+  "state": "{state|title}",
+  "activeWhen": "state == 'open'",
+  "tap": { "action": "popup" },
+  "popup": [
+    { "type": "entity" },
+    { "type": "text", "text": "Left open!", "color": "active", "showWhen": "state == 'open'" },
+    { "type": "buttons", "buttons": [
+      { "text": "Open", "action": { "action": "service", "service": "cover.open_cover" } },
+      { "text": "Close", "style": "filled", "action": { "action": "service", "service": "cover.close_cover" } }
+    ] }
+  ]
+}

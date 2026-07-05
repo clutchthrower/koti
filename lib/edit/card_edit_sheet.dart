@@ -1,5 +1,9 @@
-import 'package:flutter/material.dart';
+import 'dart:convert';
 
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../custom/card_spec.dart';
 import '../models/room_config.dart';
 import '../widgets/entity_picker.dart';
 
@@ -15,6 +19,7 @@ String cardTypeLabel(HemmaCardType type) => switch (type) {
       HemmaCardType.lock => 'Lock',
       HemmaCardType.motion => 'Motion Sensor',
       HemmaCardType.doorbell => 'Doorbell',
+      HemmaCardType.camera => 'Camera',
       HemmaCardType.vacuum => 'Vacuum',
       HemmaCardType.curtain => 'Curtain / Cover',
       HemmaCardType.energy => 'Energy Usage',
@@ -36,6 +41,7 @@ List<String>? cardTypeDomains(HemmaCardType type) => switch (type) {
       HemmaCardType.lock => const ['lock'],
       HemmaCardType.motion => const ['binary_sensor'],
       HemmaCardType.doorbell => const ['binary_sensor', 'camera'],
+      HemmaCardType.camera => const ['camera'],
       HemmaCardType.vacuum => const ['vacuum'],
       HemmaCardType.curtain => const ['cover'],
       HemmaCardType.energy => const ['sensor'],
@@ -81,6 +87,9 @@ class _CardEditSheetState extends State<_CardEditSheet> {
   late HemmaCardType _type;
   String? _entityId;
   late final TextEditingController _label;
+  late final TextEditingController _spec;
+  String? _specError;
+  List<String> _specWarnings = const [];
 
   @override
   void initState() {
@@ -89,15 +98,53 @@ class _CardEditSheetState extends State<_CardEditSheet> {
     _entityId =
         (widget.existing?.entityId.isEmpty ?? true) ? null : widget.existing!.entityId;
     _label = TextEditingController(text: widget.existing?.labelOverride ?? '');
+    _spec = TextEditingController(
+      text: widget.existing?.customSpec == null
+          ? ''
+          : const JsonEncoder.withIndent('  ')
+              .convert(widget.existing!.customSpec),
+    );
+    _validateSpec();
   }
 
   @override
   void dispose() {
     _label.dispose();
+    _spec.dispose();
     super.dispose();
   }
 
-  bool get _canSave => _entityId != null || cardTypeDomains(_type) == null;
+  void _validateSpec() {
+    if (_type != HemmaCardType.custom) return;
+    if (_spec.text.trim().isEmpty) {
+      _specError = null;
+      _specWarnings = const [];
+      return;
+    }
+    try {
+      _specWarnings = CustomCardSpec.parse(_spec.text).validate();
+      _specError = null;
+    } on FormatException catch (e) {
+      _specError = e.message;
+      _specWarnings = const [];
+    }
+  }
+
+  Map<String, dynamic>? get _parsedSpec {
+    if (_type != HemmaCardType.custom || _spec.text.trim().isEmpty) return null;
+    try {
+      return CustomCardSpec.parse(_spec.text).toJson();
+    } on FormatException {
+      return null;
+    }
+  }
+
+  bool get _canSave {
+    if (_type == HemmaCardType.custom) {
+      return _spec.text.trim().isNotEmpty && _specError == null;
+    }
+    return _entityId != null || cardTypeDomains(_type) == null;
+  }
 
   void _save() {
     Navigator.of(context).pop(CardEditResult.saved(CardConfig(
@@ -107,21 +154,44 @@ class _CardEditSheetState extends State<_CardEditSheet> {
       entityId: _entityId ?? '',
       extraEntityIds: widget.existing?.extraEntityIds ?? const [],
       labelOverride: _label.text.trim().isEmpty ? null : _label.text.trim(),
+      customSpec: _parsedSpec,
     )));
+  }
+
+  Future<void> _pasteSpec() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text?.trim();
+    if (text == null || text.isEmpty || !mounted) return;
+    setState(() {
+      _spec.text = text;
+      _validateSpec();
+    });
+  }
+
+  void _copySpec() {
+    Clipboard.setData(ClipboardData(text: _spec.text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Card copied — paste it anywhere to share')),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final isNew = widget.existing == null;
 
-    return Padding(
+    // SafeArea matters here: typing (e.g. in the JSON editor) summons the
+    // Android nav bar on wall tablets, which would otherwise cover the
+    // Add/Save row.
+    return SafeArea(
+      child: Padding(
       padding: EdgeInsets.only(
         left: 20,
         right: 20,
         top: 20,
         bottom: MediaQuery.viewInsetsOf(context).bottom + 20,
       ),
-      child: Column(
+      child: SingleChildScrollView(
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -136,16 +206,70 @@ class _CardEditSheetState extends State<_CardEditSheet> {
             ),
             items: [
               for (final t in HemmaCardType.values)
-                if (t != HemmaCardType.custom)
-                  DropdownMenuItem(value: t, child: Text(cardTypeLabel(t))),
+                DropdownMenuItem(value: t, child: Text(cardTypeLabel(t))),
             ],
             onChanged: (v) => setState(() {
               _type = v!;
               _entityId = null; // domain changed, old entity no longer fits
+              _validateSpec();
             }),
           ),
           const SizedBox(height: 12),
-          if (cardTypeDomains(_type) != null)
+          if (_type == HemmaCardType.custom) ...[
+            EntityPickerField(
+              label: 'Device (optional — overrides the design\'s entity)',
+              value: _entityId,
+              domains: null,
+              onChanged: (v) => setState(() => _entityId = v),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _spec,
+              maxLines: 10,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+              decoration: InputDecoration(
+                labelText: 'Card design (JSON)',
+                hintText:
+                    'Paste a shared card here, or tap Starter to begin',
+                alignLabelWithHint: true,
+                border: const OutlineInputBorder(),
+                errorText: _specError,
+                errorMaxLines: 3,
+              ),
+              onChanged: (_) => setState(_validateSpec),
+            ),
+            if (_specWarnings.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  _specWarnings.join('\n'),
+                  style: const TextStyle(color: Colors.orange, fontSize: 12),
+                ),
+              ),
+            Row(
+              children: [
+                TextButton.icon(
+                  icon: const Icon(Icons.auto_awesome, size: 18),
+                  label: const Text('Starter'),
+                  onPressed: () => setState(() {
+                    _spec.text = CustomCardSpec.starterFor(_entityId);
+                    _validateSpec();
+                  }),
+                ),
+                TextButton.icon(
+                  icon: const Icon(Icons.content_paste, size: 18),
+                  label: const Text('Paste'),
+                  onPressed: _pasteSpec,
+                ),
+                if (_spec.text.trim().isNotEmpty)
+                  TextButton.icon(
+                    icon: const Icon(Icons.copy, size: 18),
+                    label: const Text('Copy'),
+                    onPressed: _copySpec,
+                  ),
+              ],
+            ),
+          ] else if (cardTypeDomains(_type) != null)
             EntityPickerField(
               label: 'Device',
               value: _entityId,
@@ -189,6 +313,8 @@ class _CardEditSheetState extends State<_CardEditSheet> {
             ],
           ),
         ],
+        ),
+      ),
       ),
     );
   }

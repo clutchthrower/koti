@@ -68,6 +68,11 @@ List<CardConfig> _deriveHomeCards(StateStore store) {
     1,
   );
   addAll(all.where((e) => e.domain == 'vacuum'), HemmaCardType.vacuum, 2);
+  addAll(
+    all.where((e) => e.domain == 'camera' && e.state != 'unavailable'),
+    HemmaCardType.camera,
+    2,
+  );
   addAll(all.where((e) => e.domain == 'cover'), HemmaCardType.curtain, 2);
   addAll(all.where((e) => e.domain == 'fan'), HemmaCardType.fan, 2);
   if (all.any((e) => e.domain == 'update' && e.state == 'on')) {

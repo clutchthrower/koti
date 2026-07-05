@@ -12,6 +12,7 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
 import android.provider.Settings
+import android.view.WindowManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -151,11 +152,23 @@ class MainActivity : FlutterActivity() {
                             result.error("install_failed", e.message, null)
                         }
                     }
+                    // Holds/releases FLAG_KEEP_SCREEN_ON so the panel can
+                    // stay awake past the OS's screen-timeout ceiling.
+                    "setKeepScreenOn" -> {
+                        val on = call.argument<Boolean>("on") ?: true
+                        runOnUiThread {
+                            if (on)
+                                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                            else
+                                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        }
+                        result.success(null)
+                    }
                     "startBleProxy" -> {
                         result.success(
                             startBleProxy(
-                                call.argument<String>("name") ?: "hemma-tablet",
-                                call.argument<String>("friendlyName") ?: "Hemma Tablet",
+                                call.argument<String>("name") ?: "koti-tablet",
+                                call.argument<String>("friendlyName") ?: "Koti Tablet",
                                 call.argument<String>("mac") ?: "021122334455",
                                 call.argument<Int>("port") ?: 6053
                             )

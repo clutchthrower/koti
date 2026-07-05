@@ -81,10 +81,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           V="${{ github.event.inputs.version }}"
-          cp build/app/outputs/flutter-apk/app-release.apk "hemma-v$V.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "koti-v$V.apk"
           NOTES="${{ github.event.inputs.notes }}"
           [ -z "$NOTES" ] && NOTES="Hemma Native $V"
-          gh release create "v$V" "hemma-v$V.apk" \
+          gh release create "v$V" "koti-v$V.apk" \
             --title "Hemma Native $V" \
             --notes "$NOTES" \
             --target "$(git rev-parse HEAD)"

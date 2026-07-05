@@ -10,7 +10,9 @@ import 'package:package_info_plus/package_info_plus.dart';
 /// To publish an update: tag a GitHub release like `v1.1.0` and attach the
 /// built APK as a release asset. Tablets compare it against their own
 /// version on launch and show a blocking update screen when it's newer.
-const String kUpdateRepo = 'clutchthrower/hemma-native';
+// Renamed from 'clutchthrower/hemma-native' — GitHub redirects the old
+// path, so tablets running pre-rename builds still find updates.
+const String kUpdateRepo = 'clutchthrower/koti';
 
 class AppUpdateInfo {
   final String version;

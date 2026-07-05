@@ -128,6 +128,7 @@ class RoomAutoProvisioner {
 
         final lights = allWhere((e) => e.domain == 'light').take(8).toList();
         final mediaPlayers = allWhere((e) => e.domain == 'media_player').take(14).toList();
+        final cameras = allWhere((e) => e.domain == 'camera').take(2).toList();
         final slug = areaId.replaceAll(RegExp(r'[^a-z0-9_]'), '-');
 
         final cards = <CardConfig>[
@@ -135,6 +136,8 @@ class RoomAutoProvisioner {
             CardConfig(id: 'auto-$id', type: HemmaCardType.light, entityId: id),
           for (final id in mediaPlayers)
             CardConfig(id: 'auto-$id', type: HemmaCardType.media, entityId: id),
+          for (final id in cameras)
+            CardConfig(id: 'auto-$id', type: HemmaCardType.camera, entityId: id),
         ];
 
         rooms.add(RoomConfig(

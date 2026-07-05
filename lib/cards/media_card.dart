@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../popups/media_popup.dart';
 import '../store/state_store.dart';
 import '../widgets/entity_watcher.dart';
 import 'base_entity_card.dart';
@@ -53,8 +54,16 @@ class MediaCard extends StatelessWidget {
           active: playing,
           position: position,
           progress: playing ? progress : null,
-          onTap: () =>
-              store.callService('media_player', 'media_play_pause', entityId: entityId),
+          // Tap opens full controls; the trailing button keeps quick
+          // play/pause one touch away like the original.
+          onTap: () => showMediaPopup(context, entityId: entityId, title: label),
+          trailing: IconButton(
+            visualDensity: VisualDensity.compact,
+            icon: Icon(playing ? Icons.pause_circle_outline : Icons.play_circle_outline,
+                color: Colors.white70, size: 28),
+            onPressed: () => store.callService('media_player', 'media_play_pause',
+                entityId: entityId),
+          ),
         );
       },
     );

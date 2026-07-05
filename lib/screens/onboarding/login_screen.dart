@@ -63,7 +63,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       }
       final token = await flow.completeWithLongLivedToken(
         authorizationCode: step.result!,
-        clientName: 'Hemma Native',
+        clientName: 'Koti',
       );
       await _saveAndFinish(token);
     } catch (e) {
@@ -120,7 +120,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Hemma'),
+        title: const Text('Koti'),
         content: Text(message),
         actions: [
           FilledButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK')),

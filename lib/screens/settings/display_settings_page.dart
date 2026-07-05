@@ -141,13 +141,21 @@ class _DisplaySettingsPageState extends State<DisplaySettingsPage> {
             value: theme.fullscreenEnabled,
             onChanged: theme.setFullscreenEnabled,
           ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Keep screen awake'),
+            subtitle: const Text(
+                'Stops the display from ever sleeping, even when Android\'s screen timeout is capped (e.g. 15 minutes). Use the screensaver for burn-in protection.'),
+            value: theme.keepScreenOnEnabled,
+            onChanged: theme.setKeepScreenOnEnabled,
+          ),
           const SizedBox(height: 8),
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.home_outlined),
             title: const Text('Use as Home Screen App'),
             subtitle: const Text(
-                'Opens Android\'s home-app picker — choose Hemma to make the tablet boot straight into the dashboard. Pick your old launcher there to undo.'),
+                'Opens Android\'s home-app picker — choose Koti to make the tablet boot straight into the dashboard. Pick your old launcher there to undo.'),
             trailing: const Icon(Icons.open_in_new, size: 18),
             onTap: () => const MethodChannel('hemma/native')
                 .invokeMethod('openHomeSettings'),

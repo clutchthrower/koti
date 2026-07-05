@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../custom/card_spec.dart';
+import '../custom/custom_card.dart';
 import '../models/room_config.dart';
 import 'air_purifier_card.dart';
+import 'base_entity_card.dart';
 import 'battery_card.dart';
+import 'camera_card.dart';
 import 'curtain_card.dart';
 import 'doorbell_card.dart';
 import 'energy_card.dart';
@@ -56,6 +60,9 @@ Widget buildEntityCard(CardConfig config, int position) {
     case HemmaCardType.doorbell:
       return DoorbellCard(
           entityId: config.entityId, label: config.labelOverride, position: position);
+    case HemmaCardType.camera:
+      return CameraCard(
+          entityId: config.entityId, label: config.labelOverride, position: position);
     case HemmaCardType.vacuum:
       return VacuumCard(
           entityId: config.entityId, label: config.labelOverride, position: position);
@@ -81,6 +88,21 @@ Widget buildEntityCard(CardConfig config, int position) {
     case HemmaCardType.plant:
       return PlantCard(plantEntityId: config.entityId, position: position);
     case HemmaCardType.custom:
-      return const SizedBox.shrink();
+      final raw = config.customSpec;
+      if (raw == null) {
+        return HemmaEntityCard(
+          iconName: 'home',
+          label: config.labelOverride ?? 'Custom card',
+          stateText: 'Not configured',
+          active: false,
+          position: position,
+        );
+      }
+      return CustomCard(
+        spec: CustomCardSpec.fromJson(raw),
+        entityOverride: config.entityId.isEmpty ? null : config.entityId,
+        labelOverride: config.labelOverride,
+        position: position,
+      );
   }
 }

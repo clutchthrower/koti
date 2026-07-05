@@ -83,7 +83,7 @@ class SettingsScreen extends StatelessWidget {
             title: const Text('Bluetooth Proxy'),
             subtitle: const Text(
                 'Relays nearby Bluetooth devices (sensors, beacons) to Home Assistant, '
-                'like an ESPHome Bluetooth proxy. HA will discover "hemma-tablet" '
+                'like an ESPHome Bluetooth proxy. HA will discover "koti-tablet" '
                 'under Devices & services — add it there.'),
             value: settings.bluetoothProxyEnabled,
             onChanged: settings.setBluetoothProxyEnabled,

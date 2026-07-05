@@ -1,14 +1,16 @@
-# Hemma Native
+# Koti
+
+*Koti — Finnish for "home".*
 
 A fast, native Android dashboard for [Home Assistant](https://www.home-assistant.io/),
 built for old wall-mounted tablets. It recreates the calm, Apple-Home-inspired look of the
-[willsanderson/Hemma](https://github.com/willsanderson/Hemma) Lovelace dashboard as a
-compiled Flutter app — no WebView, no browser, no per-frame blur — so it stays smooth on
+[willsanderson/Hemma](https://github.com/willsanderson/Hemma) Lovelace dashboard (which
+inspired this project, and its former name "Hemma Native") as a compiled Flutter app — no WebView, no browser, no per-frame blur — so it stays smooth on
 hardware as old as Android 7.0 (API 24).
 
 ## Features
 
-- **Looks like Hemma**: blurred room photos, big room titles, badge pills, bottom card
+- **The Hemma look**: blurred room photos, big room titles, badge pills, bottom card
   strip, room-name tab navigation — day/night backgrounds switch with the sun.
 - **Zero-typing onboarding**: scans the LAN for Home Assistant (mDNS), signs in with your
   HA username/password (no token copy-paste), auto-creates rooms from your HA Areas, and
@@ -24,6 +26,10 @@ hardware as old as Android 7.0 (API 24).
 - **Wall-tablet niceties**: fullscreen mode, launcher (home-app) mode, screensaver with
   clock/weather and burn-in protection (including a DVD-logo bounce), device brightness
   control, and in-app updates from GitHub Releases.
+- **Custom cards**: design your own cards as small JSON files — templates, conditions,
+  buttons, sliders, toggles, and per-card popups — and share them with copy/paste. See
+  [docs/CARD_FORMAT.md](docs/CARD_FORMAT.md) and ready-made examples in
+  [cards/examples/](cards/examples/).
 
 ## Install
 

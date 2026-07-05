@@ -1,0 +1,17 @@
+{
+  "name": "{name}",
+  "icon": "lamp",
+  "entity": "light.living_room",
+  "state": "{state|title}",
+  "activeWhen": "state == 'on'",
+  "progress": { "value": "attributes.brightness", "max": 255 },
+  "tap": { "action": "popup" },
+  "quick": { "icon": "power_on", "action": { "action": "toggle" } },
+  "popup": [
+    { "type": "toggle", "label": "Power" },
+    { "type": "slider", "label": "Brightness",
+      "value": "attributes.brightness", "min": 0, "max": 255, "step": 5,
+      "service": "light.turn_on", "field": "brightness",
+      "showWhen": "state == 'on'" }
+  ]
+}
