@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Koti Card Builder</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">Koti Card Builder</div>
+  <div class="topbar-actions">
+    <button id="btn-new" class="btn">New</button>
+    <button id="btn-import" class="btn">Import</button>
+    <button id="btn-export" class="btn btn-primary">Export / Copy</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="palette">
+    <h2>Add block</h2>
+    <div class="palette-grid" id="palette-grid"></div>
+
+    <h2>Card settings</h2>
+    <div class="field">
+      <label>Name (template)</label>
+      <input id="f-name" type="text" value="{name}">
+    </div>
+    <div class="field">
+      <label>Default entity</label>
+      <input id="f-entity" type="text" placeholder="switch.washer">
+    </div>
+    <div class="field">
+      <label>Icon</label>
+      <input id="f-icon" list="icon-list" value="power_on">
+    </div>
+    <div class="field">
+      <label>State line (template)</label>
+      <input id="f-state" type="text" value="{state|title}">
+    </div>
+    <div class="field">
+      <label>Active when</label>
+      <input id="f-activeWhen" type="text" placeholder="state == 'on'">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Canvas width</label>
+        <input id="f-canvas-w" type="number" value="360" min="120" max="1200">
+      </div>
+      <div class="field">
+        <label>Canvas height</label>
+        <input id="f-canvas-h" type="number" value="480" min="120" max="1600">
+      </div>
+    </div>
+  </aside>
+
+  <main class="canvas-area">
+    <div class="canvas-wrap">
+      <div id="canvas" class="canvas"></div>
+    </div>
+    <div id="warnings" class="warnings"></div>
+  </main>
+
+  <aside class="inspector" id="inspector">
+    <h2>Properties</h2>
+    <div id="inspector-body" class="inspector-empty">
+      Select a block on the canvas to edit it.
+    </div>
+  </aside>
+</div>
+
+<div id="modal-backdrop" class="modal-backdrop hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <span id="modal-title">Export</span>
+      <button id="modal-close" class="btn-icon">&times;</button>
+    </div>
+    <textarea id="modal-textarea" spellcheck="false"></textarea>
+    <div class="modal-footer">
+      <span id="modal-hint" class="hint"></span>
+      <div>
+        <button id="modal-download" class="btn">Download .json</button>
+        <button id="modal-copy" class="btn">Copy</button>
+        <button id="modal-load" class="btn btn-primary hidden">Load</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<datalist id="icon-list"></datalist>
+
+<script src="icons.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

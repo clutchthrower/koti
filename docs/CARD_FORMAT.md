@@ -106,6 +106,29 @@ Slider example — a brightness control:
   "service": "light.turn_on", "field": "brightness" }
 ```
 
+## Freeform popup layout
+
+By default `popup` blocks stack top-to-bottom (a `row` block groups its
+children side-by-side). For pixel-precise designs — like ones exported by
+the [web card builder](https://clutchthrower.github.io/koti/builder/) —
+switch to canvas mode:
+
+```json
+{
+  "popupLayout": "canvas",
+  "canvasSize": [360, 480],
+  "popup": [
+    { "type": "text", "text": "{name}", "x": 0.06, "y": 0.04, "w": 0.6, "h": 0.1 },
+    { "type": "icon", "icon": "light", "x": 0.75, "y": 0.02, "w": 0.2, "h": 0.15 }
+  ]
+}
+```
+
+`canvasSize` is the design-time reference size (any unit — only its aspect
+ratio matters); every block then needs `x`, `y`, `w`, `h` as 0–1 fractions
+of that canvas, placing it anywhere without affecting other blocks. Omit
+`popupLayout` (or set it to `"stack"`) for the normal linear layout.
+
 ## Icons
 
 All icons are bundled in the app (`assets/icons/`), so cards never load

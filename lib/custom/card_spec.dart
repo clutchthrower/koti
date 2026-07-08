@@ -46,6 +46,15 @@ class CustomCardSpec {
   final List<Map<String, dynamic>> face; // optional free-form card face
   final List<Map<String, dynamic>> popup; // popup blocks
 
+  /// `"stack"` (default): popup blocks lay out top-to-bottom, `row` blocks
+  /// group children side-by-side. `"canvas"`: every block carries its own
+  /// `x`/`y`/`w`/`h` (0..1 fractions of [canvasWidth]x[canvasHeight]) and is
+  /// placed freely, like a design-tool canvas — built for cards exported by
+  /// the web card builder (see docs/CARD_FORMAT.md).
+  final String popupLayout;
+  final double canvasWidth;
+  final double canvasHeight;
+
   const CustomCardSpec({
     this.name = '{name}',
     this.icon = fallbackIcon,
@@ -58,6 +67,9 @@ class CustomCardSpec {
     this.quick,
     this.face = const [],
     this.popup = const [],
+    this.popupLayout = 'stack',
+    this.canvasWidth = 360,
+    this.canvasHeight = 480,
   });
 
   static List<Map<String, dynamic>> _blockList(dynamic raw) =>
@@ -82,7 +94,15 @@ class CustomCardSpec {
         quick: (json['quick'] as Map?)?.cast<String, dynamic>(),
         face: _blockList(json['blocks']),
         popup: _blockList(json['popup']),
+        popupLayout: json['popupLayout'] as String? ?? 'stack',
+        canvasWidth: _canvasDim(json['canvasSize'], 0, 360),
+        canvasHeight: _canvasDim(json['canvasSize'], 1, 480),
       );
+
+  static double _canvasDim(dynamic raw, int index, double fallback) {
+    if (raw is! List || raw.length <= index) return fallback;
+    return (raw[index] as num?)?.toDouble() ?? fallback;
+  }
 
   Map<String, dynamic> toJson() => {
         'name': name,
@@ -98,6 +118,8 @@ class CustomCardSpec {
         if (quick != null) 'quick': quick,
         if (face.isNotEmpty) 'blocks': face,
         if (popup.isNotEmpty) 'popup': popup,
+        if (popupLayout != 'stack') 'popupLayout': popupLayout,
+        if (popupLayout == 'canvas') 'canvasSize': [canvasWidth, canvasHeight],
       };
 
   /// Parses editor/import text. Throws [FormatException] with a message
@@ -162,6 +184,18 @@ class CustomCardSpec {
     checkAction((quick?['action'] as Map?)?.cast<String, dynamic>(), 'quick');
     checkBlocks(face, 'blocks');
     checkBlocks(popup, 'popup');
+
+    if (popupLayout == 'canvas') {
+      for (final block in popup) {
+        if (block['x'] == null || block['y'] == null) {
+          warnings.add(
+              'Block "${block['type']}" in popup has no x/y position (canvas layout) — it will render at the top-left corner');
+        }
+      }
+    } else if (popup.any((b) => b['x'] != null || b['y'] != null)) {
+      warnings.add(
+          'Blocks have x/y positions but popupLayout isn\'t "canvas" — positions will be ignored');
+    }
     return warnings;
   }
 

@@ -146,6 +146,8 @@ Future<void> showCustomCardPopup(
       spec: spec,
       defaultEntity: defaultEntity,
       title: title,
+      canvas: spec.popupLayout == 'canvas' && spec.popup.isNotEmpty,
+      canvasSize: Size(spec.canvasWidth, spec.canvasHeight),
     ),
   );
 }
@@ -246,12 +248,20 @@ class CustomBlocks extends StatelessWidget {
   final String? defaultEntity;
   final String title;
 
+  /// Canvas layout: every block carries its own `x`/`y`/`w`/`h` (0..1
+  /// fractions of [canvasSize]) and is placed freely via [Positioned]
+  /// instead of stacking top-to-bottom — see [CustomCardSpec.popupLayout].
+  final bool canvas;
+  final Size canvasSize;
+
   const CustomBlocks({
     super.key,
     required this.blocks,
     required this.spec,
     required this.defaultEntity,
     required this.title,
+    this.canvas = false,
+    this.canvasSize = const Size(360, 480),
   });
 
   @override
@@ -267,6 +277,19 @@ class CustomBlocks extends StatelessWidget {
           defaultEntityId: defaultEntity,
           lookup: (id) => states[id] ?? store.get(id),
         );
+        if (canvas) {
+          return AspectRatio(
+            aspectRatio: canvasSize.width / canvasSize.height,
+            child: LayoutBuilder(
+              builder: (context, constraints) => Stack(
+                children: [
+                  for (final block in blocks)
+                    _positionedBlock(context, block, scope, constraints),
+                ],
+              ),
+            ),
+          );
+        }
         return Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -275,6 +298,24 @@ class CustomBlocks extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+
+  Widget _positionedBlock(BuildContext context, Map<String, dynamic> block,
+      TemplateScope scope, BoxConstraints constraints) {
+    final x = (block['x'] as num?)?.toDouble() ?? 0.0;
+    final y = (block['y'] as num?)?.toDouble() ?? 0.0;
+    // Always resolve a concrete width/height (never leave Positioned
+    // unconstrained) — some blocks (e.g. text) size themselves to fill,
+    // which needs bounded constraints from the Stack or it throws.
+    final w = (block['w'] as num?)?.toDouble() ?? (1.0 - x).clamp(0.05, 1.0);
+    final h = (block['h'] as num?)?.toDouble() ?? 0.12;
+    return Positioned(
+      left: x * constraints.maxWidth,
+      top: y * constraints.maxHeight,
+      width: w * constraints.maxWidth,
+      height: h * constraints.maxHeight,
+      child: _buildBlock(context, block, scope),
     );
   }
 

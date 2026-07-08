@@ -225,5 +225,43 @@ void main() {
       expect(calls, ['homeassistant.toggle switch.washer']);
       expect(find.text('Power'), findsNothing); // popup did not open
     });
+
+    testWidgets('canvas-layout popup positions blocks freely', (tester) async {
+      final spec = CustomCardSpec.fromJson({
+        'name': '{name}',
+        'icon': 'power_on',
+        'popupLayout': 'canvas',
+        'canvasSize': [360, 480],
+        'popup': [
+          {
+            'type': 'text',
+            'text': 'Top label',
+            'x': 0.1,
+            'y': 0.05,
+            'w': 0.5,
+            'h': 0.1,
+          },
+          {
+            'type': 'text',
+            'text': 'Bottom label',
+            'x': 0.1,
+            'y': 0.8,
+            'w': 0.5,
+            'h': 0.1,
+          },
+        ],
+      });
+
+      await tester.pumpWidget(harness(spec));
+      await tester.pump(const Duration(seconds: 1));
+      await tester.tap(find.text('Washer'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('Top label'), findsOneWidget);
+      expect(find.text('Bottom label'), findsOneWidget);
+      final topY = tester.getTopLeft(find.text('Top label')).dy;
+      final bottomY = tester.getTopLeft(find.text('Bottom label')).dy;
+      expect(bottomY, greaterThan(topY));
+    });
   });
 }
