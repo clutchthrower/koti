@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 
-/// Animated splash: a line-art house draws itself like a technical pen,
-/// then "KOTI" draws in below it the same way. Once built, the house
-/// keeps redrawing itself — draw, hold, erase, repeat — as a loading
-/// indicator in its own right, for as long as the app is still connecting.
-/// The moment it's ready, the house is allowed to finish its current
-/// redraw and settle before the dashboard takes over.
+/// Animated splash: a line-art house draws itself like a thick, rounded
+/// brush stroke. The "KOTI" wordmark is static — it fades in once the
+/// house finishes its first build and then stays put. The house itself
+/// keeps redrawing — draw, hold, erase, repeat — as a loading indicator
+/// in its own right, for as long as the app is still connecting. The
+/// moment it's ready, the house is allowed to finish its current redraw
+/// and settle before the dashboard takes over.
 ///
 /// Single painter, plain [Path]/[PathMetric] reveals, no third-party
 /// packages — cheap enough for the old wall tablet.
@@ -32,14 +33,15 @@ class _KotiSplashScreenState extends State<KotiSplashScreen>
     with TickerProviderStateMixin {
   late final AnimationController _intro = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1800),
+    duration: const Duration(milliseconds: 1500),
   );
   late final AnimationController _loop = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1500),
+    duration: const Duration(milliseconds: 1400),
   );
 
   _Phase _phase = _Phase.intro;
+  bool _titleVisible = false;
 
   @override
   void initState() {
@@ -48,24 +50,39 @@ class _KotiSplashScreenState extends State<KotiSplashScreen>
       if (status == AnimationStatus.completed) _onIntroComplete();
     });
     _loop.addListener(_onLoopTick);
-    _intro.forward();
+    // Deferred to the next frame rather than started synchronously here:
+    // this is the very first animation of a cold app launch, and the gap
+    // between engine startup and the first real frame can otherwise get
+    // absorbed into the controller's first tick, making the house-draw
+    // appear to jump straight to "done" instead of animating.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _intro.forward();
+    });
   }
 
   void _onIntroComplete() {
-    if (widget.ready) {
-      _finish();
-    } else {
-      setState(() => _phase = _Phase.looping);
-      _loop.repeat();
-    }
+    // Always play the redraw loop at least once, even if the app was
+    // already ready before the intro finished — on a fast connection the
+    // splash would otherwise flash past in ~1.5s with no loop at all.
+    setState(() {
+      _titleVisible = true;
+      _phase = _Phase.looping;
+    });
+    _loop.repeat();
   }
 
+  int _loopsCompleted = 0;
+  double _lastLoopValue = 0;
+
   /// Only settle once the house is fully (re)drawn and briefly held — never
-  /// cut the redraw off mid-erase.
+  /// cut the redraw off mid-erase — and only after at least one full loop.
   void _onLoopTick() {
-    if (_phase != _Phase.looping || !widget.ready) return;
+    if (_phase != _Phase.looping) return;
     final v = _loop.value;
-    if (v >= 0.55 && v < 0.68) {
+    if (v < _lastLoopValue) _loopsCompleted++;
+    _lastLoopValue = v;
+
+    if (_loopsCompleted >= 1 && widget.ready && v >= 0.55 && v < 0.68) {
       _loop.stop();
       _finish();
     }
@@ -73,7 +90,7 @@ class _KotiSplashScreenState extends State<KotiSplashScreen>
 
   void _finish() {
     setState(() => _phase = _Phase.finishing);
-    Future.delayed(const Duration(milliseconds: 450), () {
+    Future.delayed(const Duration(milliseconds: 400), () {
       if (mounted) widget.onFinished();
     });
   }
@@ -83,12 +100,6 @@ class _KotiSplashScreenState extends State<KotiSplashScreen>
     _intro.dispose();
     _loop.dispose();
     super.dispose();
-  }
-
-  double _interval(double value, double begin, double end,
-      [Curve curve = Curves.linear]) {
-    final t = ((value - begin) / (end - begin)).clamp(0.0, 1.0);
-    return curve.transform(t);
   }
 
   /// Draw 0→1, hold at 1, erase 1→0, then the loop repeats — the house
@@ -119,48 +130,89 @@ class _KotiSplashScreenState extends State<KotiSplashScreen>
                 child: AnimatedBuilder(
                   animation: Listenable.merge([_intro, _loop]),
                   builder: (context, _) {
-                    final double houseReveal;
-                    final double titleReveal;
-                    if (_phase == _Phase.intro) {
-                      houseReveal =
-                          _interval(_intro.value, 0.0, 0.62, Curves.easeInOut);
-                      titleReveal =
-                          _interval(_intro.value, 0.62, 1.0, Curves.easeOut);
-                    } else {
-                      houseReveal = _loopCycle(_loop.value);
-                      titleReveal = 1.0;
-                    }
+                    final houseReveal = _phase == _Phase.intro
+                        ? Curves.easeInOut.transform(_intro.value)
+                        : _loopCycle(_loop.value);
                     return CustomPaint(
-                      painter: _KotiSplashPainter(
-                        houseReveal: houseReveal,
-                        titleReveal: titleReveal,
-                      ),
+                      painter: _KotiSplashPainter(houseReveal: houseReveal),
                     );
                   },
                 ),
               ),
             ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 48,
-              child: AnimatedOpacity(
-                opacity: _phase == _Phase.looping ? 1 : 0,
-                duration: const Duration(milliseconds: 300),
-                child: const Text(
-                  'Connecting to Home Assistant…',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontFamily: 'Hanken Grotesk',
-                    fontSize: 14,
-                    color: Color.fromRGBO(255, 255, 255, 0.85),
-                  ),
-                ),
+            Positioned.fill(
+              child: _TitleAndStatus(
+                titleVisible: _titleVisible,
+                connecting: _phase == _Phase.looping && !widget.ready,
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Static "KOTI" wordmark (real type, not hand-drawn) plus the "Connecting…"
+/// status line, both simple fades — no path animation, matching the house
+/// which is the only thing that keeps moving.
+class _TitleAndStatus extends StatelessWidget {
+  final bool titleVisible;
+  final bool connecting;
+
+  const _TitleAndStatus({required this.titleVisible, required this.connecting});
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final houseScale = size.shortestSide * 0.30;
+    final houseHeight = 1.05 * houseScale;
+    final gap = size.shortestSide * 0.10;
+    final titleTop = size.height / 2 - (houseHeight + gap) / 2 + houseHeight + gap;
+
+    return Stack(
+      children: [
+        Positioned(
+          left: 0,
+          right: 0,
+          top: titleTop - 8,
+          child: Center(
+            child: AnimatedOpacity(
+              opacity: titleVisible ? 1 : 0,
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeOut,
+              child: const Text(
+                'K O T I',
+                style: TextStyle(
+                  fontFamily: 'Hanken Grotesk',
+                  fontWeight: FontWeight.w700,
+                  fontSize: 22,
+                  letterSpacing: 8,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 48,
+          child: AnimatedOpacity(
+            opacity: connecting ? 1 : 0,
+            duration: const Duration(milliseconds: 300),
+            child: const Text(
+              'Connecting to Home Assistant…',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'Hanken Grotesk',
+                fontSize: 14,
+                color: Color.fromRGBO(255, 255, 255, 0.85),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -194,90 +246,51 @@ Path _revealPath(Path source, double t) {
 
 class _KotiSplashPainter extends CustomPainter {
   final double houseReveal;
-  final double titleReveal;
 
-  _KotiSplashPainter({required this.houseReveal, required this.titleReveal});
+  _KotiSplashPainter({required this.houseReveal});
 
   static final Paint _stroke = Paint()
     ..color = const Color(0xFFFFFFFF)
     ..style = PaintingStyle.stroke
-    ..strokeWidth = 3.0
-    ..strokeCap = StrokeCap.square;
+    ..strokeWidth = 6.0
+    ..strokeCap = StrokeCap.round
+    ..strokeJoin = StrokeJoin.round;
 
-  /// Minimalist house in unit coordinates (roughly centered on its own
-  /// origin), contours added in pen order: floor, left wall, roof, right
-  /// wall, door — reads as one continuous line drawing a house silhouette.
+  /// Minimalist house as a thick rounded stroke: the silhouette (floor,
+  /// walls, roof) is ONE closed contour — the pen never lifts — so
+  /// [StrokeJoin.round] softens every corner into a gentle fillet. The
+  /// door is a second, separate contour.
   Path _housePath(Offset center, double scale) {
-    final path = Path();
-    void line(Offset a, Offset b) {
-      path.moveTo(center.dx + a.dx * scale, center.dy + a.dy * scale);
-      path.lineTo(center.dx + b.dx * scale, center.dy + b.dy * scale);
-    }
+    Offset p(double x, double y) =>
+        Offset(center.dx + x * scale, center.dy + y * scale);
 
-    line(const Offset(-0.50, 0.50), const Offset(0.50, 0.50)); // floor
-    line(const Offset(-0.50, 0.50), const Offset(-0.50, -0.10)); // left wall
-    line(const Offset(-0.50, -0.10), const Offset(0.00, -0.55)); // roof left
-    line(const Offset(0.00, -0.55), const Offset(0.50, -0.10)); // roof right
-    line(const Offset(0.50, -0.10), const Offset(0.50, 0.50)); // right wall
-    line(const Offset(-0.09, 0.50), const Offset(-0.09, 0.16)); // door left
-    line(const Offset(-0.09, 0.16), const Offset(0.09, 0.16)); // door top
-    line(const Offset(0.09, 0.16), const Offset(0.09, 0.50)); // door right
-    return path;
-  }
+    final outline = Path()
+      ..moveTo(p(-0.50, 0.50).dx, p(-0.50, 0.50).dy)
+      ..lineTo(p(0.50, 0.50).dx, p(0.50, 0.50).dy) // floor
+      ..lineTo(p(0.50, -0.10).dx, p(0.50, -0.10).dy) // right wall
+      ..lineTo(p(0.00, -0.55).dx, p(0.00, -0.55).dy) // roof right
+      ..lineTo(p(-0.50, -0.10).dx, p(-0.50, -0.10).dy) // roof left
+      ..close(); // left wall, back to start
 
-  static const List<double> _letterWidths = [0.66, 0.78, 0.70, 0.16];
-  static const double _letterGap = 0.26;
+    final door = Path()
+      ..moveTo(p(-0.09, 0.50).dx, p(-0.09, 0.50).dy)
+      ..lineTo(p(-0.09, 0.16).dx, p(-0.09, 0.16).dy)
+      ..lineTo(p(0.09, 0.16).dx, p(0.09, 0.16).dy)
+      ..lineTo(p(0.09, 0.50).dx, p(0.09, 0.50).dy);
 
-  double get _titleUnits =>
-      _letterWidths.reduce((a, b) => a + b) +
-      _letterGap * (_letterWidths.length - 1);
-
-  /// KOTI as monoline geometric letterforms in the same pen stroke as the
-  /// house — turning type into paths needs a third-party font-parsing
-  /// package, and matching the house's technical-pen style reads more
-  /// intentional than a rendered font would here anyway.
-  Path _titlePath(Offset topLeft, double capHeight) {
-    final path = Path();
-    var x = 0.0;
-    void line(double x1, double y1, double x2, double y2) {
-      path.moveTo(topLeft.dx + (x + x1) * capHeight, topLeft.dy + y1 * capHeight);
-      path.lineTo(topLeft.dx + (x + x2) * capHeight, topLeft.dy + y2 * capHeight);
-    }
-
-    // K
-    line(0, 0, 0, 1);
-    line(0, 0.52, 0.66, 0);
-    line(0.22, 0.35, 0.66, 1);
-    x += _letterWidths[0] + _letterGap;
-    // O
-    path.addOval(Rect.fromLTWH(
-        topLeft.dx + x * capHeight, topLeft.dy, 0.78 * capHeight, capHeight));
-    x += _letterWidths[1] + _letterGap;
-    // T
-    line(0, 0, 0.70, 0);
-    line(0.35, 0, 0.35, 1);
-    x += _letterWidths[2] + _letterGap;
-    // I
-    line(0.06, 0, 0.06, 1);
-    line(0.0, 0, 0.12, 0);
-    line(0.0, 1, 0.12, 1);
-    return path;
+    return outline..addPath(door, Offset.zero);
   }
 
   @override
   void paint(Canvas canvas, Size size) {
     final houseScale = size.shortestSide * 0.30;
-    final titleCapHeight = size.shortestSide * 0.11;
-    final gap = size.shortestSide * 0.09;
-
     final houseHeight = 1.05 * houseScale;
+    final gap = size.shortestSide * 0.10;
+    final titleCapHeight = size.shortestSide * 0.11;
     final groupHeight = houseHeight + gap + titleCapHeight;
     final top = size.height / 2 - groupHeight / 2;
-
-    final houseCenter = Offset(size.width / 2, top + houseHeight / 2 - 0.025 * houseScale);
-    final titleWidth = _titleUnits * titleCapHeight;
-    final titleTopLeft =
-        Offset(size.width / 2 - titleWidth / 2, top + houseHeight + gap);
+    final houseCenter =
+        Offset(size.width / 2, top + houseHeight / 2 - 0.025 * houseScale);
 
     if (houseReveal > 0) {
       canvas.drawPath(
@@ -285,16 +298,9 @@ class _KotiSplashPainter extends CustomPainter {
         _stroke,
       );
     }
-    if (titleReveal > 0) {
-      canvas.drawPath(
-        _revealPath(_titlePath(titleTopLeft, titleCapHeight), titleReveal),
-        _stroke,
-      );
-    }
   }
 
   @override
   bool shouldRepaint(covariant _KotiSplashPainter oldDelegate) =>
-      oldDelegate.houseReveal != houseReveal ||
-      oldDelegate.titleReveal != titleReveal;
+      oldDelegate.houseReveal != houseReveal;
 }
