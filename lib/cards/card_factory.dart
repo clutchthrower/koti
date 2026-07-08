@@ -62,7 +62,12 @@ Widget buildEntityCard(CardConfig config, int position) {
           entityId: config.entityId, label: config.labelOverride, position: position);
     case KotiCardType.camera:
       return CameraCard(
-          entityId: config.entityId, label: config.labelOverride, position: position);
+        entityId: config.entityId,
+        label: config.labelOverride,
+        motionEntityId:
+            config.extraEntityIds.isNotEmpty ? config.extraEntityIds.first : null,
+        position: position,
+      );
     case KotiCardType.vacuum:
       return VacuumCard(
           entityId: config.entityId, label: config.labelOverride, position: position);

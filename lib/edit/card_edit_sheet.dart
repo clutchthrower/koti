@@ -86,6 +86,7 @@ class _CardEditSheet extends StatefulWidget {
 class _CardEditSheetState extends State<_CardEditSheet> {
   late KotiCardType _type;
   String? _entityId;
+  String? _motionEntityId;
   late final TextEditingController _label;
   late final TextEditingController _spec;
   String? _specError;
@@ -97,6 +98,9 @@ class _CardEditSheetState extends State<_CardEditSheet> {
     _type = widget.existing?.type ?? KotiCardType.light;
     _entityId =
         (widget.existing?.entityId.isEmpty ?? true) ? null : widget.existing!.entityId;
+    _motionEntityId = widget.existing?.extraEntityIds.isNotEmpty ?? false
+        ? widget.existing!.extraEntityIds.first
+        : null;
     _label = TextEditingController(text: widget.existing?.labelOverride ?? '');
     _spec = TextEditingController(
       text: widget.existing?.customSpec == null
@@ -152,7 +156,9 @@ class _CardEditSheetState extends State<_CardEditSheet> {
           DateTime.now().microsecondsSinceEpoch.toString(),
       type: _type,
       entityId: _entityId ?? '',
-      extraEntityIds: widget.existing?.extraEntityIds ?? const [],
+      extraEntityIds: _type == KotiCardType.camera
+          ? (_motionEntityId != null ? [_motionEntityId!] : const [])
+          : widget.existing?.extraEntityIds ?? const [],
       labelOverride: _label.text.trim().isEmpty ? null : _label.text.trim(),
       customSpec: _parsedSpec,
     )));
@@ -211,6 +217,7 @@ class _CardEditSheetState extends State<_CardEditSheet> {
             onChanged: (v) => setState(() {
               _type = v!;
               _entityId = null; // domain changed, old entity no longer fits
+              _motionEntityId = null;
               _validateSpec();
             }),
           ),
@@ -269,14 +276,31 @@ class _CardEditSheetState extends State<_CardEditSheet> {
                   ),
               ],
             ),
-          ] else if (cardTypeDomains(_type) != null)
+          ] else if (cardTypeDomains(_type) != null) ...[
             EntityPickerField(
               label: 'Device',
               value: _entityId,
               domains: cardTypeDomains(_type),
               onChanged: (v) => setState(() => _entityId = v),
-            )
-          else
+            ),
+            if (_type == KotiCardType.camera) ...[
+              const SizedBox(height: 12),
+              EntityPickerField(
+                label: 'Motion sensor (optional)',
+                value: _motionEntityId,
+                domains: const ['binary_sensor'],
+                deviceClasses: const ['motion', 'occupancy'],
+                onChanged: (v) => setState(() => _motionEntityId = v),
+              ),
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Text(
+                  'When set, the card pulses a red border while motion is detected.',
+                  style: TextStyle(fontSize: 12, color: Colors.white54),
+                ),
+              ),
+            ],
+          ] else
             Text(
               'This card finds its devices automatically.',
               style: TextStyle(color: Theme.of(context).hintColor),
