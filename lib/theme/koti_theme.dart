@@ -17,9 +17,8 @@ enum ScreensaverMotion {
 /// sliders) and derives the active [KotiTokens]. Persisted to
 /// SharedPreferences so choices survive app restarts.
 class ThemeController extends ChangeNotifier {
-  ThemeVariant variant = ThemeVariant.base;
   ColorModePref colorMode = ColorModePref.system;
-  Color accentColor = KotiTokens.defaultAccent;
+  final Color accentColor = KotiTokens.defaultAccent;
   double cardTransparency = 1.0;
   double animationSpeed = 1.0;
   bool entranceAnimationsEnabled = true;
@@ -43,9 +42,7 @@ class ThemeController extends ChangeNotifier {
   bool screensaverShowWeather = true;
   ScreensaverMotion screensaverMotion = ScreensaverMotion.hop;
 
-  static const _kVariant = 'koti_theme_variant';
   static const _kColorMode = 'koti_theme_color_mode';
-  static const _kAccent = 'koti_theme_accent';
   static const _kTransparency = 'koti_theme_transparency';
   static const _kAnimSpeed = 'koti_theme_anim_speed';
   static const _kEntranceAnim = 'koti_theme_entrance_anim';
@@ -60,16 +57,10 @@ class ThemeController extends ChangeNotifier {
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
-    variant = ThemeVariant.values.firstWhere(
-      (v) => v.name == prefs.getString(_kVariant),
-      orElse: () => ThemeVariant.base,
-    );
     colorMode = ColorModePref.values.firstWhere(
       (v) => v.name == prefs.getString(_kColorMode),
       orElse: () => ColorModePref.system,
     );
-    final accentValue = prefs.getInt(_kAccent);
-    if (accentValue != null) accentColor = Color(accentValue);
     cardTransparency = prefs.getDouble(_kTransparency) ?? 1.0;
     animationSpeed = prefs.getDouble(_kAnimSpeed) ?? 1.0;
     entranceAnimationsEnabled = prefs.getBool(_kEntranceAnim) ?? true;
@@ -129,9 +120,7 @@ class ThemeController extends ChangeNotifier {
 
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kVariant, variant.name);
     await prefs.setString(_kColorMode, colorMode.name);
-    await prefs.setInt(_kAccent, accentColor.toARGB32());
     await prefs.setDouble(_kTransparency, cardTransparency);
     await prefs.setDouble(_kAnimSpeed, animationSpeed);
     await prefs.setBool(_kEntranceAnim, entranceAnimationsEnabled);
@@ -145,20 +134,8 @@ class ThemeController extends ChangeNotifier {
     await prefs.setString(_kSaverMotion, screensaverMotion.name);
   }
 
-  void setVariant(ThemeVariant v) {
-    variant = v;
-    notifyListeners();
-    _save();
-  }
-
   void setColorMode(ColorModePref v) {
     colorMode = v;
-    notifyListeners();
-    _save();
-  }
-
-  void setAccentColor(Color c) {
-    accentColor = c;
     notifyListeners();
     _save();
   }
@@ -233,7 +210,6 @@ class ThemeController extends ChangeNotifier {
     };
     return KotiTokens(
       brightness: brightness,
-      variant: variant,
       accentColor: accentColor,
       cardTransparency: cardTransparency,
     );

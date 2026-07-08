@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import '../../api/ha_discovery.dart';
+import '../../theme/koti_theme.dart';
+import '../../widgets/koti_icon.dart';
+import '../koti_splash_screen.dart';
 import 'login_screen.dart';
 
 /// First-launch landing page. No setup chores up front: the app sits on a
@@ -99,7 +102,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF19191F),
+      backgroundColor: KotiSplashScreen.background,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -116,7 +119,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       fontFamily: 'Hanken Grotesk',
                       fontWeight: FontWeight.w700,
                       fontSize: 56,
-                      color: Color(0xFFEDEDF0),
+                      color: Colors.white,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -125,7 +128,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     style: TextStyle(
                       fontFamily: 'Hanken Grotesk',
                       fontSize: 16,
-                      color: Colors.white38,
+                      color: Color.fromRGBO(255, 255, 255, 0.7),
                     ),
                   ),
                   const SizedBox(height: 48),
@@ -143,24 +146,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           : 'Still searching… make sure the tablet is on the '
                               'same Wi-Fi as Home Assistant.',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white54, fontSize: 14),
+                      style: const TextStyle(
+                          color: Color.fromRGBO(255, 255, 255, 0.75), fontSize: 14),
                     ),
                   ] else ...[
                     for (final r in _results)
-                      Card(
-                        color: const Color(0xFF26262E),
-                        child: ListTile(
-                          leading:
-                              const Icon(Icons.home_outlined, color: Colors.white70),
-                          title: Text(r.name,
-                              style: const TextStyle(color: Colors.white)),
-                          subtitle: Text(r.url,
-                              style: const TextStyle(color: Colors.white54)),
-                          trailing: FilledButton(
-                            onPressed: () =>
-                                _goToLogin(r.url, externalUrl: r.externalUrl),
-                            child: const Text('Connect'),
-                          ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _DiscoveredInstanceCard(
+                          instance: r,
+                          onConnect: () =>
+                              _goToLogin(r.url, externalUrl: r.externalUrl),
                         ),
                       ),
                   ],
@@ -168,12 +164,74 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   TextButton(
                     onPressed: _enterManually,
                     child: const Text('Enter address manually',
-                        style: TextStyle(color: Colors.white38)),
+                        style: TextStyle(color: Color.fromRGBO(255, 255, 255, 0.7))),
                   ),
                 ],
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Same glass-card recipe as the dashboard's entity cards (specular
+/// border, translucent dark surface, icon circle) — a discovered instance
+/// reads as "one of these cards" rather than a plain settings-style list
+/// row, even though it's sitting on the onboarding screen's tan ground.
+class _DiscoveredInstanceCard extends StatelessWidget {
+  final DiscoveredInstance instance;
+  final VoidCallback onConnect;
+
+  const _DiscoveredInstanceCard({required this.instance, required this.onConnect});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = KotiTheme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(1),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(tokens.cardRadius),
+        gradient: tokens.borderGradient,
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(tokens.cardRadius - 1),
+          color: tokens.entityBackground,
+        ),
+        child: Row(
+          children: [
+            KotiIconCircle(
+              iconName: 'home',
+              iconColor: tokens.textPrimary,
+              backgroundColor: tokens.iconCircleBackground,
+              diameter: 40,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(instance.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontFamily: 'Hanken Grotesk',
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                          color: tokens.entityName)),
+                  Text(instance.url,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: tokens.entityState)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(onPressed: onConnect, child: const Text('Connect')),
+          ],
         ),
       ),
     );

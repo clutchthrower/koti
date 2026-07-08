@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-enum ThemeVariant { base, glass }
-
 enum ColorModePref { system, light, dark }
 
 /// Token architecture per SPECIFICATIONS.md Section 3, with literal values
@@ -9,21 +7,21 @@ enum ColorModePref { system, light, dark }
 /// Per CLAUDE.md, no BackdropFilter/real-time blur is used — the original's
 /// `backdrop-filter: blur()` surfaces are reproduced as solid low-opacity
 /// colors at the same alpha the original used underneath its blur.
+///
+/// Always renders the Glass look (the original's Base variant is gone —
+/// one considered default beats a user-facing toggle nobody needs).
 class KotiTokens {
   final Brightness brightness;
-  final ThemeVariant variant;
   final Color accentColor;
   final double cardTransparency; // 0..1, alpha multiplier for surfaces
 
   const KotiTokens({
     required this.brightness,
-    required this.variant,
     required this.accentColor,
     required this.cardTransparency,
   });
 
   bool get isDark => brightness == Brightness.dark;
-  bool get isGlass => variant == ThemeVariant.glass;
 
   // --- Card surfaces (hemma-entity-background) ---
   Color get entityBackground => (isDark
@@ -37,11 +35,15 @@ class KotiTokens {
   Color get cardBackground =>
       isDark ? const Color.fromRGBO(0, 0, 0, 0.4) : const Color.fromRGBO(0, 0, 0, 0.2);
 
-  Color get dialogBackground =>
-      isDark ? const Color.fromRGBO(0, 0, 0, 0.85) : const Color.fromRGBO(20, 20, 24, 0.9);
+  // Warm brown-charcoal instead of a cold near-black — reads as neutral
+  // rather than "dark UI slapped on top", and harmonizes with the tan
+  // splash/brand color instead of clashing with it.
+  Color get dialogBackground => isDark
+      ? const Color.fromRGBO(33, 29, 24, 0.9)
+      : const Color.fromRGBO(33, 29, 24, 0.9);
 
   Color get navBackground =>
-      isDark ? const Color.fromRGBO(0, 0, 0, 0.55) : const Color.fromRGBO(20, 20, 20, 0.5);
+      isDark ? const Color.fromRGBO(33, 29, 24, 0.55) : const Color.fromRGBO(33, 29, 24, 0.5);
 
   Color get badgeBackground =>
       isDark ? const Color.fromRGBO(0, 0, 0, 0.5) : const Color.fromRGBO(0, 0, 0, 0.35);
@@ -76,13 +78,8 @@ class KotiTokens {
   static const tileSizeMobilePortrait = Size(180, 116);
   static const tileSizeMobileLandscape = Size(160, 120);
 
-  /// Specular 1px gradient border. Transparent on the base theme (matching
-  /// the original, which zeroes these vars outside the Glass variant) so
-  /// only the Glass variant shows the glass-edge highlight.
+  /// Specular 1px gradient border — the Glass look's glass-edge highlight.
   Gradient get borderGradient {
-    if (!isGlass) {
-      return const LinearGradient(colors: [Colors.transparent, Colors.transparent]);
-    }
     final start = isDark
         ? const Color.fromRGBO(255, 255, 255, 0.20)
         : const Color.fromRGBO(255, 255, 255, 0.24);
@@ -98,13 +95,11 @@ class KotiTokens {
 
   KotiTokens copyWith({
     Brightness? brightness,
-    ThemeVariant? variant,
     Color? accentColor,
     double? cardTransparency,
   }) {
     return KotiTokens(
       brightness: brightness ?? this.brightness,
-      variant: variant ?? this.variant,
       accentColor: accentColor ?? this.accentColor,
       cardTransparency: cardTransparency ?? this.cardTransparency,
     );

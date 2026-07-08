@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 import '../api/app_update.dart';
+import 'koti_splash_screen.dart';
 
 /// Blocking "Please Update" screen shown when a newer release exists.
 /// Downloads the APK in-app with progress, then hands it to Android's
@@ -77,7 +78,7 @@ class _UpdateScreenState extends State<UpdateScreen> {
     final downloading = _progress != null;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF19191F),
+      backgroundColor: KotiSplashScreen.background,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -97,13 +98,14 @@ class _UpdateScreenState extends State<UpdateScreen> {
                       fontFamily: 'Hanken Grotesk',
                       fontWeight: FontWeight.w700,
                       fontSize: 28,
-                      color: Color(0xFFEDEDF0),
+                      color: Colors.white,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Koti ${widget.currentVersion} → ${widget.info.version}',
-                    style: const TextStyle(color: Colors.white54, fontSize: 15),
+                    style: const TextStyle(
+                        color: Color.fromRGBO(255, 255, 255, 0.75), fontSize: 15),
                   ),
                   if (widget.info.notes.isNotEmpty) ...[
                     const SizedBox(height: 16),
@@ -112,8 +114,8 @@ class _UpdateScreenState extends State<UpdateScreen> {
                       child: SingleChildScrollView(
                         child: Text(
                           widget.info.notes,
-                          style:
-                              const TextStyle(color: Colors.white38, fontSize: 13),
+                          style: const TextStyle(
+                              color: Color.fromRGBO(255, 255, 255, 0.6), fontSize: 13),
                         ),
                       ),
                     ),
@@ -128,11 +130,12 @@ class _UpdateScreenState extends State<UpdateScreen> {
                   if (downloading) ...[
                     LinearProgressIndicator(
                         value: _progress == 0 ? null : _progress,
+                        backgroundColor: const Color.fromRGBO(255, 255, 255, 0.2),
                         color: const Color(0xFF6EBAFF)),
                     const SizedBox(height: 12),
                     Text(
                       'Downloading… ${((_progress ?? 0) * 100).toStringAsFixed(0)}%',
-                      style: const TextStyle(color: Colors.white54),
+                      style: const TextStyle(color: Color.fromRGBO(255, 255, 255, 0.75)),
                     ),
                   ] else
                     FilledButton.icon(
@@ -148,7 +151,7 @@ class _UpdateScreenState extends State<UpdateScreen> {
                   TextButton(
                     onPressed: widget.onSkip,
                     child: const Text('Not now',
-                        style: TextStyle(color: Colors.white30)),
+                        style: TextStyle(color: Color.fromRGBO(255, 255, 255, 0.55))),
                   ),
                 ],
               ),

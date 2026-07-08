@@ -51,7 +51,6 @@ void main() {
         child: KotiTheme(
           tokens: KotiTokens(
             brightness: Brightness.dark,
-            variant: ThemeVariant.base,
             accentColor: KotiTokens.defaultAccent,
             cardTransparency: 1.0,
           ),

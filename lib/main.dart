@@ -239,8 +239,11 @@ class _KotiAppState extends State<KotiApp> with WidgetsBindingObserver {
             primary: tokens.accentColor,
             onPrimary: Colors.white,
             secondary: tokens.accentColor,
-            surface: tokens.isDark ? const Color(0xFF19191F) : const Color(0xFFF3F3F5),
-            onSurface: tokens.isDark ? Colors.white : const Color(0xFF1C1C1E),
+            // Warm brown-charcoal / warm off-white instead of a cold
+            // near-black / near-white — harmonizes with the tan splash and
+            // brand color instead of reading as a generic dark UI.
+            surface: tokens.isDark ? const Color(0xFF211D18) : const Color(0xFFF6F2EC),
+            onSurface: tokens.isDark ? Colors.white : const Color(0xFF241F19),
           );
 
           return KotiTheme(
