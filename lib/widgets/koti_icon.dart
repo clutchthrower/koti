@@ -29,9 +29,13 @@ class KotiIcon extends StatelessWidget {
 }
 
 /// Circular icon container matching `#img-cell` from `hemma_entity.yaml`:
-/// 44px on desktop/tablet, 38px on mobile portrait.
+/// 44px on desktop/tablet, 38px on mobile portrait. Either [iconName] (a
+/// bundled SVG) or [child] (e.g. a Material [Icon], for concepts the
+/// bundled icon set has no asset for — Wi-Fi, developer tools, exit) must
+/// be given.
 class KotiIconCircle extends StatelessWidget {
-  final String iconName;
+  final String? iconName;
+  final Widget? child;
   final Color iconColor;
   final Color backgroundColor;
   final double diameter;
@@ -39,12 +43,13 @@ class KotiIconCircle extends StatelessWidget {
 
   const KotiIconCircle({
     super.key,
-    required this.iconName,
+    this.iconName,
+    this.child,
     required this.iconColor,
     required this.backgroundColor,
     this.diameter = 44,
     this.iconSize,
-  });
+  }) : assert(iconName != null || child != null);
 
   @override
   Widget build(BuildContext context) {
@@ -56,11 +61,12 @@ class KotiIconCircle extends StatelessWidget {
         shape: BoxShape.circle,
       ),
       alignment: Alignment.center,
-      child: KotiIcon(
-        iconName,
-        size: iconSize ?? diameter * 0.59,
-        color: iconColor,
-      ),
+      child: child ??
+          KotiIcon(
+            iconName!,
+            size: iconSize ?? diameter * 0.59,
+            color: iconColor,
+          ),
     );
   }
 }

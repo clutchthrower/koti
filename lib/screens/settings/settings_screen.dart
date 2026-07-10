@@ -136,9 +136,8 @@ class SettingsScreen extends StatelessWidget {
             secondary: const Icon(Icons.library_music_outlined),
             title: const Text('Music Assistant'),
             subtitle: const Text(
-                'Adds a full-page Music control screen to the side menu: '
-                'player/group selection, search, library browsing, queue, '
-                'and artwork.'),
+                'Adds a swipeable Music page (left of Home): player/group '
+                'selection, search, library browsing, queue, and artwork.'),
             value: settings.musicAssistantEnabled,
             onChanged: settings.setMusicAssistantEnabled,
           ),

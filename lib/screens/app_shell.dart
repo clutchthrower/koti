@@ -10,17 +10,20 @@ import '../popups/scenes_popup.dart';
 import '../store/settings_store.dart';
 import '../store/state_store.dart';
 import '../theme/koti_theme.dart';
-import '../widgets/app_drawer.dart';
 import '../widgets/clock_widget.dart';
 import 'home_overview_screen.dart';
 import 'music/music_assistant_screen.dart';
 import 'room_screen.dart';
 import 'screensaver_screen.dart';
+import 'settings_view.dart';
 
 /// Top-level shell mirroring the original dashboard chrome: hamburger
 /// top-left, the Home/rooms/Scenes text-tab nav top-center, clock
-/// top-right, with the full-screen [HomeView]/[RoomView] behind it.
-/// Also owns the sidebar drawer and the idle-timeout screensaver.
+/// top-right, with the full-screen [HomeView]/[RoomView] behind it. Also
+/// owns the idle-timeout screensaver. No sliding side menu — the menu icon
+/// swaps in [SettingsView] as the body, the same way the music icon swaps
+/// in the Music page, so it reads as one continuous screen rather than a
+/// panel layered on top.
 class AppShell extends StatefulWidget {
   final SettingsStore settings;
   const AppShell({super.key, required this.settings});
@@ -30,14 +33,18 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
-  final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _editMode = EditModeController();
 
-  /// Selected room id; null means the Home tab (or Music, see [_showMusic]).
+  /// Selected room id; null means the Home tab (or Music/Settings, see
+  /// [_showMusic]/[_showSettings]).
   String? _roomId;
   /// Only meaningful when [_roomId] is null — Music sits one swipe to the
   /// left of Home, outside the room sequence.
   bool _showMusic = false;
+  /// Only reachable via the menu icon, not swipeable — sits "on top of"
+  /// whichever destination was last active, so leaving it (via a nav tab,
+  /// the music icon, or a swipe) returns there.
+  bool _showSettings = false;
   Timer? _idleTimer;
   bool _showScreensaver = false;
 
@@ -76,13 +83,18 @@ class _AppShellState extends State<AppShell> {
     final rooms = widget.settings.rooms;
     final musicEnabled = widget.settings.musicAssistantEnabled;
     // Position in the sequence: -2 = Music, -1 = Home, otherwise room index.
+    // A swipe while Settings is showing just dismisses it back to whatever
+    // was last active, rather than moving from Settings itself.
     var index = _showMusic
         ? -2
         : (_roomId == null ? -1 : rooms.indexWhere((r) => r.id == _roomId));
-    index += v < 0 ? 1 : -1; // swipe left = forward
+    if (!_showSettings) {
+      index += v < 0 ? 1 : -1; // swipe left = forward
+    }
     final minIndex = musicEnabled ? -2 : -1;
     if (index < minIndex || index >= rooms.length) return;
     setState(() {
+      _showSettings = false;
       _showMusic = index == -2;
       _roomId = index >= 0 ? rooms[index].id : null;
     });
@@ -127,19 +139,19 @@ class _AppShellState extends State<AppShell> {
         onPointerDown: (_) => _resetIdleTimer(),
         behavior: HitTestBehavior.translucent,
         child: Scaffold(
-          key: _scaffoldKey,
-          drawer: AppDrawer(currentRoom: currentRoom),
           body: Stack(
             children: [
               Positioned.fill(
                 child: GestureDetector(
                   behavior: HitTestBehavior.translucent,
                   onHorizontalDragEnd: _onHorizontalSwipe,
-                  child: _showMusic
-                      ? const MusicAssistantScreen()
-                      : (currentRoom != null
-                          ? RoomView(room: currentRoom)
-                          : const HomeView()),
+                  child: _showSettings
+                      ? const SettingsView()
+                      : _showMusic
+                          ? const MusicAssistantScreen()
+                          : (currentRoom != null
+                              ? RoomView(room: currentRoom)
+                              : const HomeView()),
                 ),
               ),
               // Top chrome: hamburger / nav tabs / clock, like the
@@ -163,18 +175,23 @@ class _AppShellState extends State<AppShell> {
                           : Row(
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.menu, color: Colors.white70),
+                                  tooltip: 'Settings',
+                                  icon: Icon(Icons.menu,
+                                      color: _showSettings
+                                          ? tokens.activeColor
+                                          : Colors.white70),
                                   onPressed: () =>
-                                      _scaffoldKey.currentState?.openDrawer(),
+                                      setState(() => _showSettings = true),
                                 ),
                                 if (musicEnabled)
                                   IconButton(
                                     tooltip: 'Music',
                                     icon: Icon(Icons.music_note,
-                                        color: _showMusic
+                                        color: !_showSettings && _showMusic
                                             ? tokens.activeColor
                                             : Colors.white70),
                                     onPressed: () => setState(() {
+                                      _showSettings = false;
                                       _showMusic = true;
                                       _roomId = null;
                                     }),
@@ -184,8 +201,11 @@ class _AppShellState extends State<AppShell> {
                                     child: KotiTopNav(
                                       rooms: rooms,
                                       selectedRoomId: _roomId,
-                                      homeSelected: !_showMusic && _roomId == null,
+                                      homeSelected: !_showSettings &&
+                                          !_showMusic &&
+                                          _roomId == null,
                                       onSelect: (room) => setState(() {
+                                        _showSettings = false;
                                         _showMusic = false;
                                         _roomId = room?.id;
                                       }),

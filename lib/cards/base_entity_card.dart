@@ -18,7 +18,10 @@ import '../widgets/koti_icon.dart';
 /// - a staggered fade/slide entrance keyed off [position]
 /// - an optional circular progress ring and battery pill
 class KotiEntityCard extends StatefulWidget {
-  final String iconName;
+  final String? iconName;
+  /// Alternative to [iconName] for concepts the bundled icon set has no
+  /// asset for (settings tiles, mostly) — a Material icon instead.
+  final IconData? materialIcon;
   final String label;
   final String stateText;
   final bool active;
@@ -31,7 +34,8 @@ class KotiEntityCard extends StatefulWidget {
 
   const KotiEntityCard({
     super.key,
-    required this.iconName,
+    this.iconName,
+    this.materialIcon,
     required this.label,
     required this.stateText,
     required this.active,
@@ -41,7 +45,7 @@ class KotiEntityCard extends StatefulWidget {
     this.progress,
     this.batteryPercent,
     this.trailing,
-  });
+  }) : assert(iconName != null || materialIcon != null);
 
   @override
   State<KotiEntityCard> createState() => _KotiEntityCardState();
@@ -161,6 +165,13 @@ class _KotiEntityCardState extends State<KotiEntityCard>
                             backgroundColor: tokens.iconCircleBackground,
                             diameter: circleDiameter,
                             iconSize: iconSize,
+                            child: widget.materialIcon != null
+                                ? Icon(widget.materialIcon,
+                                    size: iconSize,
+                                    color: widget.active
+                                        ? tokens.activeColor
+                                        : tokens.textPrimary)
+                                : null,
                           ),
                         ],
                       ),
