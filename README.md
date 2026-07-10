@@ -23,9 +23,13 @@ hardware as old as Android 7.0 (API 24).
 - **Bluetooth proxy**: optionally relays nearby BLE advertisements to Home Assistant using
   the ESPHome native API — HA discovers the tablet on *Devices & services* like any
   ESPHome Bluetooth proxy.
-- **Tablet as a speaker**: turn the tablet into a Music Assistant player. It advertises
-  itself on the LAN (mDNS) and the [Koti integration](custom_components/koti) auto-creates
-  a `media_player` entity for it — no IP address or password to enter.
+- **Tablet as a speaker**: turn the tablet into a Music Assistant player. It speaks the
+  Fully Kiosk Browser REST protocol, so Music Assistant's built-in "Fully Kiosk Browser"
+  player provider can control it directly (Settings → Speaker shows the host/port to add).
+  Separately, it also advertises itself on the LAN (mDNS) so the
+  [Koti integration](custom_components/koti) auto-creates a plain HA `media_player` entity
+  for it with no setup — that part is zero-config, but Music Assistant itself still needs
+  the manual add above until a native "Koti" MA player provider exists upstream.
 - **Wall-tablet niceties**: fullscreen mode, launcher (home-app) mode, screensaver with
   clock/weather and burn-in protection (including a DVD-logo bounce), device brightness
   control, and in-app updates from GitHub Releases.
@@ -43,11 +47,12 @@ updates itself from new releases here.
 
 ### Home Assistant integration (for the speaker feature)
 
-Only needed if you enable *Settings → Speaker* in the app. Not on HACS yet — install
-manually: copy `custom_components/koti` from this repo into your HA config's
-`custom_components/` folder, restart Home Assistant, then enable the speaker in the app.
-HA notifies you when it discovers the tablet; approve it and a `media_player` entity
-appears automatically, ready to add to Music Assistant.
+Only needed if you enable *Settings → Speaker* in the app and want the tablet to also show
+up as a plain HA device (separate from adding it to Music Assistant — see Settings →
+Speaker for that). Not on HACS yet — install manually: copy `custom_components/koti` from
+this repo into your HA config's `custom_components/` folder, restart Home Assistant, then
+enable the speaker in the app. HA notifies you when it discovers the tablet; approve it and
+a `media_player` entity appears automatically.
 
 ## Development
 

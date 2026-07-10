@@ -75,12 +75,12 @@ class KotiConfigFlow(ConfigFlow, domain=DOMAIN):
             if info is None:
                 errors["base"] = "cannot_connect"
             else:
-                device_id = info.get(CONF_ID, host)
+                device_id = info.get("deviceID", host)
                 await self.async_set_unique_id(device_id)
                 self._abort_if_unique_id_configured(
                     updates={CONF_HOST: host, CONF_PORT: port}
                 )
-                name = info.get(CONF_NAME, host)
+                name = info.get("deviceName", host)
                 return self.async_create_entry(
                     title=name,
                     data={
@@ -106,7 +106,7 @@ class KotiConfigFlow(ConfigFlow, domain=DOMAIN):
         session = async_get_clientsession(self.hass)
         try:
             async with session.get(
-                f"http://{host}:{port}/?cmd=info",
+                f"http://{host}:{port}/?cmd=deviceInfo",
                 timeout=aiohttp.ClientTimeout(total=5),
             ) as response:
                 if response.status != 200:

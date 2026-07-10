@@ -1,0 +1,15 @@
+{
+  "type": "player",
+  "domain": "koti",
+  "stage": "experimental",
+  "name": "Koti",
+  "description": "Play audio directly on Koti Android tablets via their REST API.",
+  "codeowners": ["@clutchthrower"],
+  "credits": [
+    "[Koti](https://github.com/clutchthrower/koti)"
+  ],
+  "requirements": [],
+  "documentation": "https://github.com/clutchthrower/koti",
+  "multi_instance": false,
+  "builtin": false
+}

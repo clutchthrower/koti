@@ -74,7 +74,7 @@ class KotiCoordinator(DataUpdateCoordinator):
         session = await self._get_session()
         try:
             async with asyncio.timeout(10):
-                async with session.get(f"{self.base_url}/?cmd=info") as response:
+                async with session.get(f"{self.base_url}/?cmd=deviceInfo") as response:
                     response.raise_for_status()
                     data = await response.json()
         except (TimeoutError, aiohttp.ClientError) as err:
