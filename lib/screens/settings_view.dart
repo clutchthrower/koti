@@ -9,6 +9,7 @@ import '../layout/settings_grid.dart';
 import '../models/room_config.dart';
 import '../store/settings_store.dart';
 import '../store/state_store.dart';
+import '../widgets/glass_page_route.dart';
 import 'home_overview_screen.dart';
 import 'settings/advanced_settings_page.dart';
 import 'settings/appearance_settings_page.dart';
@@ -99,8 +100,7 @@ class _SettingsViewState extends State<SettingsView> {
     controller.dispose();
   }
 
-  void _push(Widget page) =>
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+  void _push(Widget page) => pushGlassSheet(context, page);
 
   List<SettingsEntry> _entries(SettingsStore settings) {
     return [

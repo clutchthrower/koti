@@ -180,8 +180,12 @@ class _AppShellState extends State<AppShell> {
                                       color: _showSettings
                                           ? tokens.activeColor
                                           : Colors.white70),
-                                  onPressed: () =>
-                                      setState(() => _showSettings = true),
+                                  // Tapping it again while already in
+                                  // Settings returns to whichever room/Home
+                                  // was showing before, instead of doing
+                                  // nothing.
+                                  onPressed: () => setState(
+                                      () => _showSettings = !_showSettings),
                                 ),
                                 if (musicEnabled)
                                   IconButton(
