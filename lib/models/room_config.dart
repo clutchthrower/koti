@@ -110,6 +110,7 @@ class RoomConfig {
   /// to the whole-home shot instead of a black screen.
   String get _demoBase {
     final k = id.toLowerCase();
+    if (k.contains('security')) return 'security-demo';
     if (k.contains('bed')) return 'bedroom-demo';
     if (k.contains('kitchen') || k.contains('dining') || k.contains('laundry')) {
       return 'kitchen-demo';

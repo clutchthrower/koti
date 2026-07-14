@@ -39,6 +39,10 @@ dependencies:
   web_socket_channel: ^3.0.1
   http: ^1.2.2
 
+  # @visibleForTesting — pure-Dart, unlike flutter/foundation.dart, so files
+  # imported by host-side dart-run tool/ scripts (no Flutter engine) can use it.
+  meta: ^1.15.0
+
   # Onboarding: mDNS scan to auto-discover Home Assistant on the LAN
   # (HA advertises itself as `_home-assistant._tcp.local`)
   multicast_dns: ^0.3.2+7

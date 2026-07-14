@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:meta/meta.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../models/entity_state.dart';
@@ -157,6 +158,9 @@ class RoomAutoProvisioner {
         ));
       }
 
+      final securityRoom = buildSecurityRoom(states);
+      if (securityRoom != null) rooms.add(securityRoom);
+
       return ProvisionResult(rooms: rooms, weatherEntityId: weatherEntity, adminAccess: true);
     } finally {
       await sub.cancel();
@@ -171,4 +175,51 @@ class ProvisionResult {
   final bool adminAccess;
 
   ProvisionResult({required this.rooms, required this.weatherEntityId, required this.adminAccess});
+}
+
+/// Synthesizes a whole-house "Security" room from every camera/lock/doorbell/
+/// motion entity, regardless of which Area (or no Area) it belongs to —
+/// unlike the rooms above, this isn't a 1:1 mapping of an HA Area, it's a
+/// cross-cutting overview so security-relevant entities don't only live
+/// buried inside whichever room they happen to be assigned to. Returns null
+/// if the instance has none of these (nothing to show).
+@visibleForTesting
+RoomConfig? buildSecurityRoom(List<EntityState> states) {
+  final cameras = states.where((e) => e.domain == 'camera').take(8).toList();
+  final locks = states.where((e) => e.domain == 'lock').take(8).toList();
+  final doorbells = states
+      .where((e) => e.domain == 'binary_sensor' && e.entityId.contains('doorbell'))
+      .take(4)
+      .toList();
+  final motion = states
+      .where((e) => e.domain == 'binary_sensor' && e.attr('device_class', '') == 'motion')
+      .take(10)
+      .toList();
+
+  if (cameras.isEmpty && locks.isEmpty && doorbells.isEmpty && motion.isEmpty) return null;
+
+  final cards = <CardConfig>[
+    for (final e in cameras)
+      CardConfig(id: 'auto-security-${e.entityId}', type: KotiCardType.camera, entityId: e.entityId),
+    for (final e in locks)
+      CardConfig(id: 'auto-security-${e.entityId}', type: KotiCardType.lock, entityId: e.entityId),
+    for (final e in doorbells)
+      CardConfig(
+          id: 'auto-security-${e.entityId}', type: KotiCardType.doorbell, entityId: e.entityId),
+    if (motion.isNotEmpty)
+      CardConfig(
+        id: 'auto-security-motion',
+        type: KotiCardType.motion,
+        entityId: motion.first.entityId,
+        extraEntityIds: motion.skip(1).map((e) => e.entityId).toList(),
+      ),
+  ];
+
+  return RoomConfig(
+    id: 'security',
+    name: 'Security',
+    iconAsset: 'lock',
+    lockEntities: locks.map((e) => e.entityId).toList(),
+    cards: cards,
+  );
 }

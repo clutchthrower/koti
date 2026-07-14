@@ -12,6 +12,7 @@ const _demoOptions = [
   ('livingroom-demo', 'Living Room'),
   ('kitchen-demo', 'Kitchen'),
   ('bedroom-demo', 'Bedroom'),
+  ('security-demo', 'Security'),
 ];
 
 /// Pick a room background: automatic (keyword-matched bundled photo), one

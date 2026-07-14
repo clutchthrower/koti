@@ -162,9 +162,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       }
       if (result.rooms.isNotEmpty) {
         await settings.setRooms(result.rooms);
+        final hasSecurity = result.rooms.any((r) => r.id == 'security');
         message = 'Connected — set up ${result.rooms.length} room'
             '${result.rooms.length == 1 ? '' : 's'} automatically from your '
-            'Home Assistant areas.';
+            'Home Assistant areas'
+            '${hasSecurity ? ', including a Security page for your cameras and locks' : ''}.';
       } else if (!result.adminAccess) {
         message = 'Connected. This account can\'t read Areas, so rooms '
             'weren\'t auto-created — add them in Settings → Rooms.';
