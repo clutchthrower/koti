@@ -58,10 +58,10 @@ void showClimatePopup(
                 label: 'AQI',
                 value: aqi.toStringAsFixed(0),
                 color: aqi < 50
-                    ? const Color(0xFF63C58B)
+                    ? kSeverityColors[SeverityTier.good]!
                     : aqi < 100
-                        ? const Color(0xFFE8C34F)
-                        : const Color(0xFFE85D4F),
+                        ? kSeverityColors[SeverityTier.warning]!
+                        : kSeverityColors[SeverityTier.critical]!,
               ),
           ],
         );

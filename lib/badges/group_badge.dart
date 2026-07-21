@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/koti_theme.dart';
+import '../theme/tokens.dart';
 import '../utils/device_mode.dart';
 import '../widgets/koti_icon.dart';
 
@@ -77,7 +78,7 @@ class GroupBadge extends StatelessWidget {
                       fontFamily: 'Hanken Grotesk',
                       fontWeight: FontWeight.w500,
                       fontSize: fontSize - 2,
-                      color: const Color.fromRGBO(255, 255, 255, 0.75),
+                      color: KotiTokens.secondaryOnDark,
                     ),
                   ),
               ],

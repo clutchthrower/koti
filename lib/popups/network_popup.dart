@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../store/helper_store.dart';
 import '../store/state_store.dart';
 import '../theme/koti_theme.dart';
+import '../utils/color_utils.dart';
 import '../widgets/entity_watcher.dart';
 import 'popup_base.dart';
 
@@ -88,9 +89,9 @@ class _RestartTile extends StatelessWidget {
 
     final label = done ? 'Done' : (confirming ? 'Confirm?' : name);
     final color = done
-        ? const Color(0xFF63C58B)
+        ? kSeverityColors[SeverityTier.good]
         : confirming
-            ? const Color(0xFFE8934F)
+            ? kSeverityColors[SeverityTier.elevated]
             : null;
 
     return Padding(

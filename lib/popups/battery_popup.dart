@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../store/state_store.dart';
 import '../theme/koti_theme.dart';
+import '../utils/color_utils.dart';
 import 'popup_base.dart';
 
 void showBatteryPopup(BuildContext context, List<String>? entityFilter, int lowThreshold) {
@@ -36,10 +37,10 @@ void showBatteryPopup(BuildContext context, List<String>? entityFilter, int lowT
           ...batteries.map((e) {
             final level = double.tryParse(e.state) ?? 0;
             final color = level < 20
-                ? const Color(0xFFE85D4F)
+                ? kSeverityColors[SeverityTier.critical]!
                 : level < 50
-                    ? const Color(0xFFE8C34F)
-                    : const Color(0xFF63C58B);
+                    ? kSeverityColors[SeverityTier.warning]!
+                    : kSeverityColors[SeverityTier.good]!;
             return ListTile(
               title: Text(e.attr<String>('friendly_name', e.entityId),
                   style: TextStyle(color: tokens.textPrimary)),

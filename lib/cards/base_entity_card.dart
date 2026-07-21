@@ -265,10 +265,10 @@ class _BatteryPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = percent <= 20
-        ? colorForTempF(90) // very-hot red, reused for critical battery
+        ? kSeverityColors[SeverityTier.critical]!
         : percent <= 50
-            ? const Color(0xFFFFCC00)
-            : const Color(0xFF44e371);
+            ? kSeverityColors[SeverityTier.warning]!
+            : kSeverityColors[SeverityTier.good]!;
     return Container(
       margin: const EdgeInsets.only(left: 6),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),

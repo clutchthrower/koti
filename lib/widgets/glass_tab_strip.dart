@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/koti_theme.dart';
+
 /// A pill-shaped tab strip in the same visual language as [KotiTopNav]'s
 /// room tabs (translucent dark pill, lighter pill highlight on the
 /// selected tab) — used wherever a page needs its own tab row without
@@ -35,7 +37,7 @@ class GlassTabStrip extends StatelessWidget {
         ];
         return Container(
           decoration: BoxDecoration(
-            color: const Color.fromRGBO(0, 0, 0, 0.28),
+            color: KotiTheme.of(context).pillBackground,
             borderRadius: BorderRadius.circular(9999),
           ),
           padding: const EdgeInsets.all(5),
@@ -67,7 +69,7 @@ class _GlassTab extends StatelessWidget {
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? const Color.fromRGBO(255, 255, 255, 0.22) : Colors.transparent,
+          color: selected ? KotiTheme.of(context).pillSelectedBackground : Colors.transparent,
           borderRadius: BorderRadius.circular(9999),
         ),
         child: Text(

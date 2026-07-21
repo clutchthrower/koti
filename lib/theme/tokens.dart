@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/color_utils.dart';
+
 enum ColorModePref { system, light, dark }
 
 /// Token architecture per SPECIFICATIONS.md Section 3, with literal values
@@ -51,10 +53,23 @@ class KotiTokens {
   Color get activeColor => accentColor;
   static const defaultAccent = Color(0xFF6EBAFF); // --primary-color / --accent-color
 
-  Color get puckCoolColor => const Color(0xFF0091FF); // hemma-color-deep-blue
-  Color get puckHeatColor => const Color(0xFFff9230); // hemma-color-orange
+  // Same brand colors as the temperature palette's cold/hot ends — sourced
+  // from kTempColors rather than re-declared, so there's one hex for each
+  // instead of two independent copies drifting apart.
+  Color get puckCoolColor => kTempColors[TempColorTier.veryCold]!;
+  Color get puckHeatColor => kTempColors[TempColorTier.hot]!;
 
   Color get iconCircleBackground => const Color.fromRGBO(255, 255, 255, 0.10);
+
+  // --- Shared "glass pill" language (top nav tabs, music tab strip) ---
+  Color get pillBackground => const Color.fromRGBO(0, 0, 0, 0.28);
+  Color get pillSelectedBackground => const Color.fromRGBO(255, 255, 255, 0.22);
+
+  /// Secondary text on a raw dark background — the pre-theme screens
+  /// (splash/onboarding/update) that render before a full `KotiTheme` is
+  /// meaningful still want this exact treatment, so it's a plain static
+  /// constant rather than an instance getter.
+  static const secondaryOnDark = Color.fromRGBO(255, 255, 255, 0.75);
 
   // --- Text ---
   Color get textPrimary =>

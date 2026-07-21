@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../theme/koti_theme.dart';
+import '../utils/color_utils.dart';
 import '../widgets/entity_watcher.dart';
 import 'popup_base.dart';
 
 Color _wattageColor(double watts) {
-  if (watts < 200) return const Color(0xFF63C58B);
-  if (watts < 1000) return const Color(0xFFE8C34F);
-  if (watts < 3000) return const Color(0xFFE8934F);
-  return const Color(0xFFE85D4F);
+  if (watts < 200) return kSeverityColors[SeverityTier.good]!;
+  if (watts < 1000) return kSeverityColors[SeverityTier.warning]!;
+  if (watts < 3000) return kSeverityColors[SeverityTier.elevated]!;
+  return kSeverityColors[SeverityTier.critical]!;
 }
 
 void showEnergyPopup(BuildContext context, String powerEntityId) {

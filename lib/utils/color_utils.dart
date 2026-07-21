@@ -49,25 +49,17 @@ const Map<HumidityColorTier, Color> kHumidityColors = {
 Color colorForHumidity(double percent) =>
     kHumidityColors[humidityColorTier(percent)]!;
 
-/// Base Hemma color palette (`themes/hemma/hemma.yaml`), exposed for badges
-/// and popups that reference a named accent rather than a threshold color.
-class KotiPalette {
-  static const blue = Color(0xFF007AFF);
-  static const teal = Color(0xFF00C3D0);
-  static const yellow = Color(0xFFFFCC00);
-  static const green = Color(0xFF44E371);
-  static const greenSoft = Color(0xFF67F5A0);
-  static const greenPlant = Color(0xFF34C759);
-  static const orange = Color(0xFFFF9230);
-  static const red = Color(0xFFFF4245);
-  static const ice = Color(0xFF3CD3FE);
-  static const amber = Color(0xFFFFB254);
-  static const deepBlue = Color(0xFF0091FF);
-  static const deepOrange = Color(0xFFFF6B30);
-  static const pink = Color(0xFFFF4D70);
-  static const neutral = Color(0xFFCDCDCF);
-  static const purple = Color(0xFF9333EA);
-  static const gold = Color(0xFFE5A00D);
-  static const presenceHome = Color(0xD949F08C);
-  static const presenceAway = Color(0xFFFFCC00);
-}
+/// A single good→critical color ramp, shared by every value-to-color popup
+/// that isn't temperature/humidity (AQI, battery level, wattage, network
+/// restart state) — these used to each declare their own copy of the same
+/// four hex values independently; each caller still owns its own
+/// thresholds (a battery's "low" cutoff isn't a wattage's), only the colors
+/// themselves are shared here.
+enum SeverityTier { good, warning, elevated, critical }
+
+const Map<SeverityTier, Color> kSeverityColors = {
+  SeverityTier.good: Color(0xFF63C58B),
+  SeverityTier.warning: Color(0xFFE8C34F),
+  SeverityTier.elevated: Color(0xFFE8934F),
+  SeverityTier.critical: Color(0xFFE85D4F),
+};

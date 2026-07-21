@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/room_config.dart';
+import '../theme/koti_theme.dart';
 
 /// The original dashboard's navigation: a row of text tabs across the top
 /// — Home, then each room by name, then "Scenes ⌄" — inside a translucent
@@ -34,7 +35,7 @@ class KotiTopNav extends StatelessWidget {
     // for Scenes" landmark regardless of how many rooms are configured.
     return Container(
       decoration: BoxDecoration(
-        color: const Color.fromRGBO(0, 0, 0, 0.28),
+        color: KotiTheme.of(context).pillBackground,
         borderRadius: BorderRadius.circular(9999),
       ),
       padding: const EdgeInsets.all(5),
@@ -96,7 +97,7 @@ class _NavTab extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? const Color.fromRGBO(255, 255, 255, 0.22) : Colors.transparent,
+          color: selected ? KotiTheme.of(context).pillSelectedBackground : Colors.transparent,
           borderRadius: BorderRadius.circular(9999),
         ),
         child: Row(

@@ -51,8 +51,8 @@ class MediaPill extends StatelessWidget {
               Container(
                 width: 40,
                 height: 40,
-                decoration: const BoxDecoration(
-                  color: Color.fromRGBO(255, 255, 255, 0.15),
+                decoration: BoxDecoration(
+                  color: tokens.iconCircleBackground,
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,

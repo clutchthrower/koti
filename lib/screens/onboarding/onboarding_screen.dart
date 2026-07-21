@@ -5,6 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import '../../api/ha_discovery.dart';
 import '../../theme/koti_theme.dart';
+import '../../theme/tokens.dart';
 import '../../widgets/koti_icon.dart';
 import '../koti_splash_screen.dart';
 import 'login_screen.dart';
@@ -137,7 +138,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       width: 22,
                       height: 22,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Color(0xFF6EBAFF)),
+                          strokeWidth: 2, color: KotiTokens.defaultAccent),
                     ),
                     const SizedBox(height: 16),
                     Text(
@@ -147,7 +148,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                               'same Wi-Fi as Home Assistant.',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
-                          color: Color.fromRGBO(255, 255, 255, 0.75), fontSize: 14),
+                          color: KotiTokens.secondaryOnDark, fontSize: 14),
                     ),
                   ] else ...[
                     for (final r in _results)
