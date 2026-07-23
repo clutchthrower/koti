@@ -147,6 +147,12 @@ class SendspinConnection {
     return activate.payload;
   }
 
+  /// Sends one JSON message — for use after [handshakeAndActivate] resolves
+  /// (`client/time`, `client/state`, ...); the handshake/hello exchange
+  /// itself uses [_sendEnvelope] directly since it runs before this class
+  /// exposes anything publicly.
+  Future<void> send(SendspinEnvelope envelope) => _sendEnvelope(envelope);
+
   Future<void> close({String reason = 'user_request'}) async {
     try {
       if (_sendCipher != null) {

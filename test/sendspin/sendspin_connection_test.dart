@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -14,6 +13,8 @@ import 'package:koti/sendspin/noise/transport_cipher.dart';
 import 'package:koti/sendspin/sendspin_connection.dart';
 import 'package:koti/sendspin/wire/envelope.dart';
 
+import 'test_event_pump.dart';
+
 /// Drives the *server* (Music Assistant) side of the handshake over a real
 /// loopback WebSocket, so [SendspinConnection] — which always plays the
 /// Sendspin client/Noise-responder role — gets exercised against genuine
@@ -26,10 +27,10 @@ class _FakeMusicAssistantServer {
 
   final WebSocket _socket;
   final SimpleKeyPair _serverStatic;
-  late final Stream<dynamic> _events = _socket.asBroadcastStream();
+  late final _pump = TestEventPump(_socket);
 
   Future<Map<String, dynamic>> run() async {
-    final clientInitRaw = await _events.firstWhere((e) => e is String) as String;
+    final clientInitRaw = await _pump.nextText();
     final clientInit = SendspinEnvelope.decode(clientInitRaw);
     final clientId = base64UrlNoPadDecode(clientInit.payload['client_id'] as String);
 
@@ -57,7 +58,7 @@ class _FakeMusicAssistantServer {
       'data': base64UrlNoPad(message1),
     }).encode());
 
-    final message2Raw = await _events.firstWhere((e) => e is String) as String;
+    final message2Raw = await _pump.nextText();
     final message2Envelope = SendspinEnvelope.decode(message2Raw);
     final message2Bytes = base64UrlNoPadDecode(message2Envelope.payload['data'] as String);
     await handshake.readMessage2(message2Bytes, psk);
@@ -72,7 +73,7 @@ class _FakeMusicAssistantServer {
     }
 
     Future<Map<String, dynamic>> receiveJson() async {
-      final raw = await _events.firstWhere((e) => e is List<int>) as List<int>;
+      final raw = await _pump.nextBinary();
       final plaintext = await receiveCipher.decrypt(Uint8List.fromList(raw));
       expect(plaintext[0], 0, reason: 'expected a JSON control frame');
       return SendspinEnvelope.decode(utf8.decode(plaintext.sublist(1))).payload;

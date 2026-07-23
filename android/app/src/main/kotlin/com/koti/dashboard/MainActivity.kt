@@ -8,7 +8,10 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.AudioFormat
 import android.media.AudioManager
+import android.media.AudioTrack
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
@@ -20,6 +23,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
+import java.util.concurrent.LinkedBlockingQueue
 
 class MainActivity : FlutterActivity() {
     private var bleSink: EventChannel.EventSink? = null
@@ -162,6 +166,83 @@ class MainActivity : FlutterActivity() {
         kotiNsdListener = null
     }
 
+    // The Sendspin player's raw-PCM output sink. A dedicated thread owns
+    // the AudioTrack and drains a queue of already-decoded chunks — writes
+    // to an AudioTrack in MODE_STREAM block until consumed, and blocking
+    // the platform channel's own thread (where MethodChannel calls land)
+    // would stall every other native call this app makes while audio plays.
+    private var sendspinAudioTrack: AudioTrack? = null
+    private var sendspinAudioThread: Thread? = null
+    private var sendspinAudioQueue: LinkedBlockingQueue<ByteArray>? = null
+    private val sendspinStopSignal = ByteArray(0)
+
+    private fun startSendspinAudioSink(sampleRate: Int, channels: Int): String {
+        stopSendspinAudioSink()
+        val channelMask =
+            if (channels >= 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
+        val minBufferSize =
+            AudioTrack.getMinBufferSize(sampleRate, channelMask, AudioFormat.ENCODING_PCM_16BIT)
+        if (minBufferSize <= 0) return "error"
+
+        val track = AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(channelMask)
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .build()
+            )
+            .setBufferSizeInBytes(minBufferSize * 2)
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .build()
+        track.play()
+        sendspinAudioTrack = track
+
+        val queue = LinkedBlockingQueue<ByteArray>()
+        sendspinAudioQueue = queue
+        val thread = Thread {
+            while (true) {
+                val chunk = queue.take()
+                if (chunk === sendspinStopSignal) break
+                try {
+                    track.write(chunk, 0, chunk.size)
+                } catch (_: Exception) {
+                    break
+                }
+            }
+        }
+        thread.isDaemon = true
+        thread.start()
+        sendspinAudioThread = thread
+        return "ok"
+    }
+
+    private fun writeSendspinPcmChunk(bytes: ByteArray) {
+        sendspinAudioQueue?.put(bytes)
+    }
+
+    private fun stopSendspinAudioSink() {
+        sendspinAudioQueue?.put(sendspinStopSignal)
+        try {
+            sendspinAudioThread?.join(500)
+        } catch (_: InterruptedException) {
+        }
+        sendspinAudioThread = null
+        sendspinAudioQueue = null
+        try {
+            sendspinAudioTrack?.stop()
+            sendspinAudioTrack?.release()
+        } catch (_: Exception) {
+        }
+        sendspinAudioTrack = null
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
@@ -256,6 +337,23 @@ class MainActivity : FlutterActivity() {
                         stopKotiDiscovery()
                         result.success(null)
                     }
+                    "startSendspinAudioSink" -> {
+                        result.success(
+                            startSendspinAudioSink(
+                                call.argument<Int>("sampleRate") ?: 48000,
+                                call.argument<Int>("channels") ?: 2
+                            )
+                        )
+                    }
+                    "writeSendspinPcmChunk" -> {
+                        val bytes = call.argument<ByteArray>("bytes")
+                        if (bytes != null) writeSendspinPcmChunk(bytes)
+                        result.success(null)
+                    }
+                    "stopSendspinAudioSink" -> {
+                        stopSendspinAudioSink()
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -264,6 +362,7 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         stopBleProxy()
         stopKotiDiscovery()
+        stopSendspinAudioSink()
         super.onDestroy()
     }
 }
