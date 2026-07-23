@@ -32,6 +32,7 @@ class SettingsStore extends ChangeNotifier {
   static const _kSpeakerEnabled = 'koti_speaker_enabled';
   static const _kSelfSpeakerEntityId = 'koti_self_speaker_entity_id';
   static const _kDeviceName = 'koti_device_name';
+  static const _kSendspinEnabled = 'koti_sendspin_enabled';
 
   String localUrl = '';
   String remoteUrl = '';
@@ -78,6 +79,12 @@ class SettingsStore extends ChangeNotifier {
   /// it became, so the Music screen can default to controlling this device.
   bool speakerEnabled = false;
   String? selfSpeakerEntityId;
+
+  /// Speaks the Sendspin protocol directly — Music Assistant's own
+  /// built-in player support, no custom provider/add-on install needed on
+  /// the MA side at all. An alternative to [speakerEnabled]'s Fully Kiosk
+  /// Browser REST path, not a replacement for it yet.
+  bool sendspinEnabled = false;
 
   String? get accessToken => _accessToken;
 
@@ -135,6 +142,7 @@ class SettingsStore extends ChangeNotifier {
     musicAssistantEnabled = prefs.getBool(_kMusicAssistant) ?? false;
     speakerEnabled = prefs.getBool(_kSpeakerEnabled) ?? false;
     selfSpeakerEntityId = prefs.getString(_kSelfSpeakerEntityId);
+    sendspinEnabled = prefs.getBool(_kSendspinEnabled) ?? false;
     notifyListeners();
   }
 
@@ -174,6 +182,13 @@ class SettingsStore extends ChangeNotifier {
     speakerEnabled = v;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kSpeakerEnabled, v);
+    notifyListeners();
+  }
+
+  Future<void> setSendspinEnabled(bool v) async {
+    sendspinEnabled = v;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kSendspinEnabled, v);
     notifyListeners();
   }
 

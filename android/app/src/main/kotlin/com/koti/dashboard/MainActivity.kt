@@ -36,6 +36,10 @@ class MainActivity : FlutterActivity() {
     private var kotiNsdManager: NsdManager? = null
     private var kotiNsdListener: NsdManager.RegistrationListener? = null
 
+    // Separate again for Sendspin's own discovery advertisement.
+    private var sendspinNsdManager: NsdManager? = null
+    private var sendspinNsdListener: NsdManager.RegistrationListener? = null
+
     private fun blePermissions(): Array<String> =
         if (Build.VERSION.SDK_INT >= 31)
             arrayOf(Manifest.permission.BLUETOOTH_SCAN)
@@ -164,6 +168,39 @@ class MainActivity : FlutterActivity() {
         } catch (_: Exception) {
         }
         kotiNsdListener = null
+    }
+
+    // Advertises this tablet as a Sendspin client over mDNS (spec's
+    // "server-initiated" discovery model) so Music Assistant's own
+    // built-in Sendspin support finds and dials in — zero configuration,
+    // no custom MA provider needed. `path` is a required TXT record per
+    // the spec (the WebSocket endpoint Music Assistant should connect to).
+    private fun startSendspinDiscovery(name: String, port: Int): String {
+        if (sendspinNsdListener != null) return "ok"
+        val info = NsdServiceInfo().apply {
+            serviceName = name
+            serviceType = "_sendspin._tcp."
+            setPort(port)
+            setAttribute("path", "/sendspin")
+            setAttribute("name", name)
+        }
+        sendspinNsdListener = object : NsdManager.RegistrationListener {
+            override fun onServiceRegistered(i: NsdServiceInfo?) {}
+            override fun onRegistrationFailed(i: NsdServiceInfo?, e: Int) {}
+            override fun onServiceUnregistered(i: NsdServiceInfo?) {}
+            override fun onUnregistrationFailed(i: NsdServiceInfo?, e: Int) {}
+        }
+        sendspinNsdManager = getSystemService(Context.NSD_SERVICE) as NsdManager
+        sendspinNsdManager?.registerService(info, NsdManager.PROTOCOL_DNS_SD, sendspinNsdListener)
+        return "ok"
+    }
+
+    private fun stopSendspinDiscovery() {
+        try {
+            sendspinNsdListener?.let { sendspinNsdManager?.unregisterService(it) }
+        } catch (_: Exception) {
+        }
+        sendspinNsdListener = null
     }
 
     // The Sendspin player's raw-PCM output sink. A dedicated thread owns
@@ -354,6 +391,18 @@ class MainActivity : FlutterActivity() {
                         stopSendspinAudioSink()
                         result.success(null)
                     }
+                    "startSendspinDiscovery" -> {
+                        result.success(
+                            startSendspinDiscovery(
+                                call.argument<String>("name") ?: "Koti Tablet",
+                                call.argument<Int>("port") ?: 8928
+                            )
+                        )
+                    }
+                    "stopSendspinDiscovery" -> {
+                        stopSendspinDiscovery()
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -363,6 +412,7 @@ class MainActivity : FlutterActivity() {
         stopBleProxy()
         stopKotiDiscovery()
         stopSendspinAudioSink()
+        stopSendspinDiscovery()
         super.onDestroy()
     }
 }

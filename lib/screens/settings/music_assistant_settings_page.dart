@@ -160,6 +160,18 @@ class _MusicAssistantSettingsPageState extends State<MusicAssistantSettingsPage>
                 ),
               ),
             ],
+            const Divider(height: 32),
+            KotiSwitchListTile(
+              title: const Text('Use Sendspin (experimental)'),
+              subtitle: const Text(
+                  'Speaks Music Assistant\'s own built-in synchronized-audio '
+                  'protocol directly — no player provider to install, no '
+                  'setup in Music Assistant at all. An alternative to the '
+                  'Fully Kiosk Browser speaker above, not a replacement for '
+                  'it yet; safe to try alongside it.'),
+              value: settings.sendspinEnabled,
+              onChanged: settings.setSendspinEnabled,
+            ),
           ],
         ],
       ),

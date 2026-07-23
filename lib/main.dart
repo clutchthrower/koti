@@ -14,6 +14,7 @@ import 'api/ha_registry.dart';
 import 'api/ha_rest_client.dart';
 import 'api/ha_websocket_client.dart';
 import 'screens/koti_splash_screen.dart';
+import 'sendspin/sendspin_server.dart';
 import 'speaker/koti_player_server.dart';
 import 'screens/update_screen.dart';
 import 'store/helper_store.dart';
@@ -75,6 +76,9 @@ class _KotiAppState extends State<KotiApp> with WidgetsBindingObserver {
   KotiPlayerServer? _speakerServer;
   bool _speakerSyncing = false;
 
+  SendspinServer? _sendspinServer;
+  bool _sendspinSyncing = false;
+
   @override
   void initState() {
     super.initState();
@@ -98,6 +102,7 @@ class _KotiAppState extends State<KotiApp> with WidgetsBindingObserver {
     if (changed) _connect();
     unawaited(_syncBleProxy());
     unawaited(_syncSpeaker());
+    unawaited(_syncSendspin());
   }
 
   /// Starts/stops the Bluetooth proxy to match the setting. If starting
@@ -159,6 +164,36 @@ class _KotiAppState extends State<KotiApp> with WidgetsBindingObserver {
     }
   }
 
+  /// Starts/stops the Sendspin listener to match the setting — same
+  /// start/stop/rename shape as [_syncSpeaker], a separate, independent
+  /// speaker path (Music Assistant's own built-in protocol, no custom
+  /// provider needed) rather than a replacement for it yet.
+  Future<void> _syncSendspin() async {
+    if (_sendspinSyncing) return;
+    _sendspinSyncing = true;
+    try {
+      final want = widget.settings.sendspinEnabled;
+      final deviceName = widget.settings.deviceName;
+      final server = _sendspinServer;
+      if (want && server == null) {
+        final newServer = SendspinServer(deviceName: deviceName);
+        try {
+          await newServer.start();
+          _sendspinServer = newServer;
+        } catch (_) {
+          await widget.settings.setSendspinEnabled(false);
+        }
+      } else if (!want && server != null) {
+        await server.stop();
+        _sendspinServer = null;
+      } else if (want && server != null && server.deviceName != deviceName) {
+        await server.updateName(deviceName);
+      }
+    } finally {
+      _sendspinSyncing = false;
+    }
+  }
+
   Future<void> _init() async {
     await _themeController.load();
     unawaited(_localStats.load());
@@ -171,6 +206,7 @@ class _KotiAppState extends State<KotiApp> with WidgetsBindingObserver {
         const Duration(hours: 6), (_) => unawaited(_checkForUpdate()));
     unawaited(_syncBleProxy());
     unawaited(_syncSpeaker());
+    unawaited(_syncSendspin());
   }
 
   Future<void> _checkForUpdate() async {
