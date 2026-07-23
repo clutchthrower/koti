@@ -69,6 +69,10 @@ dependencies:
   # Local audio playback for the "tablet as a speaker" feature
   just_audio: ^0.9.42
 
+  # Sendspin protocol: X25519/ChaCha20-Poly1305/SHA-256/HKDF primitives for
+  # the hand-rolled Noise KKpsk2 handshake (lib/sendspin/noise/)
+  cryptography: ^2.7.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
