@@ -73,8 +73,10 @@ class _KotiAppState extends State<KotiApp> with WidgetsBindingObserver {
   final BleProxy _bleProxy = BleProxy();
   bool _bleProxySyncing = false;
 
-  KotiPlayerServer? _speakerServer;
-  bool _speakerSyncing = false;
+  // Always running — custom_components/koti's media_player entity depends
+  // on this REST API for both polling and commands, independent of any
+  // Music Assistant setup, so it's not gated behind a settings toggle.
+  KotiPlayerServer? _kotiServer;
 
   SendspinServer? _sendspinServer;
   bool _sendspinSyncing = false;
@@ -101,7 +103,7 @@ class _KotiAppState extends State<KotiApp> with WidgetsBindingObserver {
         widget.settings.accessToken != _connectedToken;
     if (changed) _connect();
     unawaited(_syncBleProxy());
-    unawaited(_syncSpeaker());
+    unawaited(_syncKotiServerName());
     unawaited(_syncSendspin());
   }
 
@@ -129,45 +131,34 @@ class _KotiAppState extends State<KotiApp> with WidgetsBindingObserver {
     }
   }
 
-  /// Starts/stops the tablet-as-speaker HTTP server + discovery
-  /// advertisement to match the setting, and re-announces an already-
-  /// running server under a new name if the user renames the device
-  /// without needing a restart. If binding the port fails (already in
-  /// use, permission denied), the toggle flips back off so it never lies
-  /// about what's running.
-  Future<void> _syncSpeaker() async {
-    if (_speakerSyncing) return;
-    _speakerSyncing = true;
-    try {
-      final want = widget.settings.speakerEnabled;
-      final deviceName = widget.settings.deviceName;
-      final server = _speakerServer;
-      if (want && server == null) {
-        final newServer = KotiPlayerServer(
-          id: widget.settings.deviceId,
-          name: deviceName,
-        );
-        try {
-          await newServer.start();
-          _speakerServer = newServer;
-        } catch (_) {
-          await widget.settings.setSpeakerEnabled(false);
-        }
-      } else if (!want && server != null) {
-        await server.stop();
-        _speakerServer = null;
-      } else if (want && server != null && server.name != deviceName) {
-        await server.updateName(deviceName);
+  /// Starts the always-on Koti REST server + discovery advertisement once,
+  /// and re-announces it under a new name if the user renames the device
+  /// without needing a restart. Failing to bind the port just means the
+  /// tablet won't be controllable via custom_components/koti this
+  /// session — not worth surfacing as a settings toggle the user could
+  /// flip, since nothing here is optional.
+  Future<void> _syncKotiServerName() async {
+    final deviceName = widget.settings.deviceName;
+    final server = _kotiServer;
+    if (server == null) {
+      final newServer = KotiPlayerServer(
+        id: widget.settings.deviceId,
+        name: deviceName,
+      );
+      try {
+        await newServer.start();
+        _kotiServer = newServer;
+      } catch (_) {
+        // Retried on the next settings change or app restart.
       }
-    } finally {
-      _speakerSyncing = false;
+    } else if (server.name != deviceName) {
+      await server.updateName(deviceName);
     }
   }
 
-  /// Starts/stops the Sendspin listener to match the setting — same
-  /// start/stop/rename shape as [_syncSpeaker], a separate, independent
-  /// speaker path (Music Assistant's own built-in protocol, no custom
-  /// provider needed) rather than a replacement for it yet.
+  /// Starts/stops the Sendspin listener to match the setting — Music
+  /// Assistant's own built-in synchronized-audio protocol, no custom
+  /// provider/add-on needed on the MA side at all.
   Future<void> _syncSendspin() async {
     if (_sendspinSyncing) return;
     _sendspinSyncing = true;
@@ -205,7 +196,7 @@ class _KotiAppState extends State<KotiApp> with WidgetsBindingObserver {
     _updateTimer = Timer.periodic(
         const Duration(hours: 6), (_) => unawaited(_checkForUpdate()));
     unawaited(_syncBleProxy());
-    unawaited(_syncSpeaker());
+    unawaited(_syncKotiServerName());
     unawaited(_syncSendspin());
   }
 

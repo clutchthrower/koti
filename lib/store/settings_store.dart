@@ -29,8 +29,6 @@ class SettingsStore extends ChangeNotifier {
   static const _kUpdateChecks = 'koti_update_checks';
   static const _kBleProxy = 'koti_ble_proxy';
   static const _kMusicAssistant = 'koti_music_assistant';
-  static const _kSpeakerEnabled = 'koti_speaker_enabled';
-  static const _kSelfSpeakerEntityId = 'koti_self_speaker_entity_id';
   static const _kDeviceName = 'koti_device_name';
   static const _kSendspinEnabled = 'koti_sendspin_enabled';
 
@@ -72,18 +70,9 @@ class SettingsStore extends ChangeNotifier {
   bool bluetoothProxyEnabled = false;
   bool musicAssistantEnabled = false;
 
-  /// "Tablet as a speaker": advertises itself on the LAN (mDNS) as a
-  /// Koti player that the Koti Home Assistant integration auto-discovers
-  /// and turns into a media_player entity — no manual IP/password entry.
-  /// [selfSpeakerEntityId] is set once the user confirms which HA entity
-  /// it became, so the Music screen can default to controlling this device.
-  bool speakerEnabled = false;
-  String? selfSpeakerEntityId;
-
   /// Speaks the Sendspin protocol directly — Music Assistant's own
   /// built-in player support, no custom provider/add-on install needed on
-  /// the MA side at all. An alternative to [speakerEnabled]'s Fully Kiosk
-  /// Browser REST path, not a replacement for it yet.
+  /// the MA side at all.
   bool sendspinEnabled = false;
 
   String? get accessToken => _accessToken;
@@ -140,8 +129,6 @@ class SettingsStore extends ChangeNotifier {
     updateChecksEnabled = prefs.getBool(_kUpdateChecks) ?? true;
     bluetoothProxyEnabled = prefs.getBool(_kBleProxy) ?? false;
     musicAssistantEnabled = prefs.getBool(_kMusicAssistant) ?? false;
-    speakerEnabled = prefs.getBool(_kSpeakerEnabled) ?? false;
-    selfSpeakerEntityId = prefs.getString(_kSelfSpeakerEntityId);
     sendspinEnabled = prefs.getBool(_kSendspinEnabled) ?? false;
     notifyListeners();
   }
@@ -178,28 +165,10 @@ class SettingsStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setSpeakerEnabled(bool v) async {
-    speakerEnabled = v;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kSpeakerEnabled, v);
-    notifyListeners();
-  }
-
   Future<void> setSendspinEnabled(bool v) async {
     sendspinEnabled = v;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kSendspinEnabled, v);
-    notifyListeners();
-  }
-
-  Future<void> setSelfSpeakerEntityId(String? id) async {
-    selfSpeakerEntityId = id;
-    final prefs = await SharedPreferences.getInstance();
-    if (id == null) {
-      await prefs.remove(_kSelfSpeakerEntityId);
-    } else {
-      await prefs.setString(_kSelfSpeakerEntityId, id);
-    }
     notifyListeners();
   }
 

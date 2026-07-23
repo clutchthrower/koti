@@ -22,13 +22,6 @@ class EntityPickerField extends StatelessWidget {
   /// entity being temporarily offline shouldn't hide it, e.g. wiring up a
   /// room's sensor.
   final bool excludeUnavailable;
-  /// Entity ids to hide outright, e.g. a caller-computed set of duplicate
-  /// `media_player` entities Music Assistant mirrors alongside a device's
-  /// own native entity — this widget is domain-agnostic, so callers that
-  /// need that dedup compute it themselves (see `dedupedPlayerIds` in
-  /// `music_players_popup.dart`) rather than baking MA-specific logic in
-  /// here.
-  final Set<String>? excludeIds;
 
   const EntityPickerField({
     super.key,
@@ -39,7 +32,6 @@ class EntityPickerField extends StatelessWidget {
     this.deviceClasses,
     this.allowClear = true,
     this.excludeUnavailable = false,
-    this.excludeIds,
   });
 
   List<EntityState> _filtered(StateStore store) {
@@ -52,7 +44,6 @@ class EntityPickerField extends StatelessWidget {
       if (excludeUnavailable && (e.state == 'unavailable' || e.state == 'unknown')) {
         return false;
       }
-      if (excludeIds != null && excludeIds!.contains(e.entityId)) return false;
       return true;
     }).toList()
       ..sort((a, b) => a.attr<String>('friendly_name', a.entityId)

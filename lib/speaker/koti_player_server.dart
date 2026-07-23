@@ -5,24 +5,23 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 
-/// Speaks the Fully Kiosk Browser REST API (`?cmd=X&password=Y&type=json`)
-/// so this tablet can be added as a player in Music Assistant's existing,
-/// already-shipped "Fully Kiosk Browser" provider — the same API surface
-/// the Dashie Kiosk app's MA provider (`dashie_kiosk`) uses. A real
-/// Koti-branded MA provider would need code merged into music-assistant's
-/// own server repo (see `music_assistant/providers/dashie_kiosk/` for the
-/// pattern); this is the interim path that works with what MA ships today.
+/// Speaks the Fully Kiosk Browser REST API (`?cmd=X&password=Y&type=json`).
+/// Runs always, independent of any Music Assistant setup — it's the
+/// backing API `custom_components/koti`'s media_player entity polls and
+/// sends commands to for direct Home Assistant control. It also happens to
+/// be compatible with Music Assistant's existing, already-shipped
+/// "Fully Kiosk Browser" provider (the same surface the Dashie Kiosk app's
+/// `dashie_kiosk` MA provider uses), for anyone who prefers that over the
+/// native Sendspin client (`lib/sendspin/`).
 /// The password param is accepted but never checked — this device is only
 /// reachable on the LAN, matching this app's other unauthenticated local
 /// servers (e.g. the Bluetooth proxy). Volume goes through Android's real
 /// STREAM_MUSIC (a platform channel call, not the audio player's own
-/// gain) — otherwise MA's volume slider silently multiplies against
+/// gain) — otherwise a remote volume slider silently multiplies against
 /// whatever the device's physical volume happens to be set to.
 ///
 /// Also advertises itself over mDNS (`_koti._tcp`, see MainActivity.kt) so
-/// this app's own `custom_components/koti` Home Assistant integration can
-/// still auto-discover the tablet as a plain HA device/entity — separate
-/// from, and unrelated to, how Music Assistant finds it.
+/// `custom_components/koti` can auto-discover the tablet.
 class KotiPlayerServer {
   static const defaultPort = 8127;
   static const _channel = MethodChannel('koti/native');

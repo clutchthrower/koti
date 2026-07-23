@@ -1,7 +1,7 @@
 """The Koti integration — auto-discovered tablets, exposed as a media_player
-entity (media_player.koti_{name}) so it's directly controllable, and as a
-Home Assistant device the Koti Music Assistant player provider can find
-without a separate manual IP:port entry.
+entity (media_player.koti_{name}) so it's directly controllable, and merged
+with the tablet's ESPHome Bluetooth-proxy device into one Home Assistant
+Device page (see mac.py).
 """
 
 from __future__ import annotations

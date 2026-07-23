@@ -38,7 +38,7 @@ class SettingsView extends StatelessWidget {
         icon: Icons.library_music_outlined,
         label: 'Music Assistant',
         stateText: settings.musicAssistantEnabled
-            ? (settings.speakerEnabled ? 'On + Speaker' : 'On')
+            ? (settings.sendspinEnabled ? 'On + Sendspin' : 'On')
             : 'Off',
         active: settings.musicAssistantEnabled,
         onTap: () => _push(context, const MusicAssistantSettingsPage()),

@@ -72,8 +72,7 @@ class KotiMediaPlayer(CoordinatorEntity[KotiCoordinator], MediaPlayerEntity):
             name=device_name,
             manufacturer="Koti",
             model="Koti Tablet",
-            # Read by the Koti Music Assistant player provider to find this
-            # tablet's REST API without a separate manual IP:port entry.
+            # Clickable link on the device page to the tablet's own REST API.
             configuration_url=f"http://{entry.data['host']}:{entry.data['port']}",
         )
         self._update_from_coordinator()

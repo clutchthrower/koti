@@ -51,18 +51,6 @@ class _MusicAssistantScreenState extends State<MusicAssistantScreen>
   String? _blurredForUrl;
 
   @override
-  void initState() {
-    super.initState();
-    // Defaults to this tablet's own speaker entity, if the Speaker feature
-    // has been set up and the user confirmed which entity it became.
-    final settings = Provider.of<SettingsStore>(context, listen: false);
-    final selfEntity = settings.selfSpeakerEntityId;
-    if (selfEntity != null && selfEntity.isNotEmpty) {
-      _selectedPlayer = selfEntity;
-    }
-  }
-
-  @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
