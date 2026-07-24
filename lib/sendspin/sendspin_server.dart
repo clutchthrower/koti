@@ -38,6 +38,12 @@ class SendspinServer {
 
   bool get running => _httpServer != null;
 
+  /// The live player for whatever Music Assistant connection is currently
+  /// active, or null if nothing's connected — read live (not cached) by
+  /// `KotiHaServer` each time it needs to forward a transport command, so
+  /// it always reflects the current connection rather than a stale one.
+  SendspinPlayer? get player => _player;
+
   Future<void> start() async {
     if (running) return;
     _identity = await SendspinIdentity.load();

@@ -226,7 +226,9 @@ class SendspinConnection {
       'name': deviceName,
       'device_info': {'product_name': 'Koti Tablet', 'manufacturer': 'Koti'},
       'trust_level': 'none',
-      'supported_roles': ['player@v1'],
+      // controller@v1 has no support object to declare (spec defines
+      // none for this role) — just listing it is enough to ask for it.
+      'supported_roles': ['player@v1', 'controller@v1'],
       'player@v1_support': {
         'supported_formats': [
           {'codec': 'pcm', 'channels': 2, 'sample_rate': 48000, 'bit_depth': 16},

@@ -10,8 +10,12 @@ import 'wire/envelope.dart';
 /// Drives one Sendspin connection's steady state (everything after
 /// `server/activate`): the `client/time`/`server/time` sync loop feeding
 /// [SendspinTimeFilter], `stream/start` format negotiation, scheduling
-/// incoming audio chunks into the native `AudioTrack` sink, and reporting
-/// player state/volume back to the server.
+/// incoming audio chunks into the native `AudioTrack` sink, reporting
+/// player state/volume back to the server, and — via the `controller@v1`
+/// role — sending outward transport commands ([play]/[pause]/[stop]/
+/// [next]/[previous]) so something outside this connection (Home
+/// Assistant, via `KotiHaServer`) can control whatever the connected Music
+/// Assistant server is currently playing.
 ///
 /// Talks to the native sink over the same `koti/native` platform channel
 /// this app's other native calls already use (volume, BLE proxy, mDNS) —
@@ -49,6 +53,27 @@ class SendspinPlayer {
     _timeSyncTimer?.cancel();
     await _stopSink();
   }
+
+  /// Sends a `controller@v1` transport command — no local state to
+  /// maintain, since it's the connected Music Assistant server that
+  /// decides what "next track" means and what's actually playing;
+  /// `server/state.controller` feedback isn't tracked here as this app
+  /// doesn't currently surface repeat/shuffle/volume-from-controller back
+  /// to the user anywhere.
+  Future<void> _sendControllerCommand(String command) {
+    return _connection.send(SendspinEnvelope(MessageType.clientCommand, {
+      'controller': {'command': command},
+    }));
+  }
+
+  // Named controllerX rather than play()/pause()/stop() to avoid colliding
+  // with this class's own start()/stop() lifecycle methods above, which
+  // mean something entirely different (tear down this connection).
+  Future<void> controllerPlay() => _sendControllerCommand('play');
+  Future<void> controllerPause() => _sendControllerCommand('pause');
+  Future<void> controllerStop() => _sendControllerCommand('stop');
+  Future<void> controllerNext() => _sendControllerCommand('next');
+  Future<void> controllerPrevious() => _sendControllerCommand('previous');
 
   void _scheduleTimeSync(Duration interval) {
     _timeSyncTimer?.cancel();

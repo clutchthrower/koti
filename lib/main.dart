@@ -13,9 +13,9 @@ import 'api/ha_device_registration.dart';
 import 'api/ha_registry.dart';
 import 'api/ha_rest_client.dart';
 import 'api/ha_websocket_client.dart';
+import 'api/koti_ha_server.dart';
 import 'screens/koti_splash_screen.dart';
 import 'sendspin/sendspin_server.dart';
-import 'speaker/koti_player_server.dart';
 import 'screens/update_screen.dart';
 import 'store/helper_store.dart';
 import 'store/local_stats_store.dart';
@@ -73,10 +73,10 @@ class _KotiAppState extends State<KotiApp> with WidgetsBindingObserver {
   final BleProxy _bleProxy = BleProxy();
   bool _bleProxySyncing = false;
 
-  // Always running — custom_components/koti's media_player entity depends
-  // on this REST API for both polling and commands, independent of any
-  // Music Assistant setup, so it's not gated behind a settings toggle.
-  KotiPlayerServer? _kotiServer;
+  // Always running — custom_components/koti's entities depend on this
+  // REST API for polling and commands, independent of any Music Assistant
+  // setup, so it's not gated behind a settings toggle.
+  KotiHaServer? _kotiHaServer;
 
   SendspinServer? _sendspinServer;
   bool _sendspinSyncing = false;
@@ -139,15 +139,18 @@ class _KotiAppState extends State<KotiApp> with WidgetsBindingObserver {
   /// flip, since nothing here is optional.
   Future<void> _syncKotiServerName() async {
     final deviceName = widget.settings.deviceName;
-    final server = _kotiServer;
+    final server = _kotiHaServer;
     if (server == null) {
-      final newServer = KotiPlayerServer(
+      final newServer = KotiHaServer(
         id: widget.settings.deviceId,
         name: deviceName,
+        currentVersion: () => _currentVersion,
+        latestVersion: () => _pendingUpdate?.version,
+        sendspinController: () => _sendspinServer?.player,
       );
       try {
         await newServer.start();
-        _kotiServer = newServer;
+        _kotiHaServer = newServer;
       } catch (_) {
         // Retried on the next settings change or app restart.
       }

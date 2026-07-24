@@ -5,14 +5,19 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../sendspin/sendspin_player.dart';
+
 /// Speaks the Fully Kiosk Browser REST API (`?cmd=X&password=Y&type=json`).
 /// Runs always, independent of any Music Assistant setup — it's the
-/// backing API `custom_components/koti`'s media_player entity polls and
-/// sends commands to for direct Home Assistant control. It also happens to
-/// be compatible with Music Assistant's existing, already-shipped
-/// "Fully Kiosk Browser" provider (the same surface the Dashie Kiosk app's
-/// `dashie_kiosk` MA provider uses), for anyone who prefers that over the
-/// native Sendspin client (`lib/sendspin/`).
+/// backing API `custom_components/koti`'s entities poll and send commands
+/// to for direct Home Assistant control: playback/volume on the
+/// media_player entity, battery/charging/update-status sensors, restart/
+/// reboot buttons, and (via [sendspinController]) transport commands
+/// forwarded to whatever Sendspin session is currently connected. It also
+/// happens to be compatible with Music Assistant's existing, already-
+/// shipped "Fully Kiosk Browser" provider (the same surface the Dashie
+/// Kiosk app's `dashie_kiosk` MA provider uses), for anyone who prefers
+/// that over the native Sendspin client (`lib/sendspin/`).
 /// The password param is accepted but never checked — this device is only
 /// reachable on the LAN, matching this app's other unauthenticated local
 /// servers (e.g. the Bluetooth proxy). Volume goes through Android's real
@@ -22,7 +27,7 @@ import 'package:just_audio/just_audio.dart';
 ///
 /// Also advertises itself over mDNS (`_koti._tcp`, see MainActivity.kt) so
 /// `custom_components/koti` can auto-discover the tablet.
-class KotiPlayerServer {
+class KotiHaServer {
   static const defaultPort = 8127;
   static const _channel = MethodChannel('koti/native');
 
@@ -30,7 +35,21 @@ class KotiPlayerServer {
   String name;
   final int port;
 
-  KotiPlayerServer({required this.id, required this.name, this.port = defaultPort}) {
+  /// Live getters rather than fixed values, since the current app
+  /// version/update state and the connected Sendspin session (if any) can
+  /// all change while this server keeps running.
+  final String Function() currentVersion;
+  final String? Function() latestVersion;
+  final SendspinPlayer? Function() sendspinController;
+
+  KotiHaServer({
+    required this.id,
+    required this.name,
+    required this.currentVersion,
+    required this.latestVersion,
+    required this.sendspinController,
+    this.port = defaultPort,
+  }) {
     // Only an explicit stopSound cleared `_currentUrl` — a track that
     // finishes on its own left it set forever, so `soundUrlPlaying` (and
     // therefore the HA entity's and MA player's derived playback state)
@@ -115,6 +134,20 @@ class KotiPlayerServer {
         await _handleSeekSound(request, params);
       case 'setAudioVolume':
         await _handleSetAudioVolume(request, params);
+      case 'restartApp':
+        await _handleRestartApp(request);
+      case 'rebootDevice':
+        await _handleRebootDevice(request);
+      case 'sendspinPlay':
+        await _handleSendspinCommand(request, (p) => p.controllerPlay());
+      case 'sendspinPause':
+        await _handleSendspinCommand(request, (p) => p.controllerPause());
+      case 'sendspinStop':
+        await _handleSendspinCommand(request, (p) => p.controllerStop());
+      case 'sendspinNext':
+        await _handleSendspinCommand(request, (p) => p.controllerNext());
+      case 'sendspinPrevious':
+        await _handleSendspinCommand(request, (p) => p.controllerPrevious());
       default:
         await _respondError(request, 'Unknown command: ${params['cmd']}');
     }
@@ -125,6 +158,18 @@ class KotiPlayerServer {
     try {
       volume = await _channel.invokeMethod<int>('getMusicVolume') ?? 100;
     } catch (_) {}
+
+    var batteryLevel = 0;
+    var batteryCharging = false;
+    try {
+      final battery = await _channel.invokeMethod<Map<Object?, Object?>>('getBatteryStatus');
+      batteryLevel = battery?['level'] as int? ?? 0;
+      batteryCharging = battery?['charging'] as bool? ?? false;
+    } catch (_) {}
+
+    final current = currentVersion();
+    final latest = latestVersion();
+
     await _respondJson(request, {
       'deviceID': id,
       'deviceName': name,
@@ -132,6 +177,12 @@ class KotiPlayerServer {
       'audioVolume': volume,
       'soundUrlPlaying': _currentUrl ?? '',
       'audioPosition': _player.position.inMilliseconds,
+      'batteryLevel': batteryLevel,
+      'batteryCharging': batteryCharging,
+      'appVersion': current,
+      'appLatestVersion': latest,
+      'appUpdateAvailable': latest != null && latest != current,
+      'sendspinConnected': sendspinController() != null,
     });
   }
 
@@ -196,6 +247,48 @@ class KotiPlayerServer {
       await _respondJson(request, {'status': 'OK'});
     } catch (e) {
       await _respondError(request, 'Volume change failed: $e');
+    }
+  }
+
+  Future<void> _handleRestartApp(HttpRequest request) async {
+    // Respond before triggering the restart — the native side kills this
+    // process shortly after, and this response needs to actually flush
+    // over the socket before that happens.
+    await _respondJson(request, {'status': 'OK'});
+    try {
+      await _channel.invokeMethod('restartApp');
+    } catch (_) {}
+  }
+
+  Future<void> _handleRebootDevice(HttpRequest request) async {
+    try {
+      final result = await _channel.invokeMethod<String>('rebootDevice');
+      if (result == 'ok') {
+        await _respondJson(request, {'status': 'OK'});
+      } else {
+        // Most commonly "requires_device_owner" — a normal Android app
+        // can't reboot the device without Device Owner mode (see README).
+        await _respondError(request, result ?? 'error');
+      }
+    } catch (e) {
+      await _respondError(request, 'Reboot failed: $e');
+    }
+  }
+
+  Future<void> _handleSendspinCommand(
+    HttpRequest request,
+    Future<void> Function(SendspinPlayer) action,
+  ) async {
+    final player = sendspinController();
+    if (player == null) {
+      await _respondError(request, 'No Sendspin session connected');
+      return;
+    }
+    try {
+      await action(player);
+      await _respondJson(request, {'status': 'OK'});
+    } catch (e) {
+      await _respondError(request, 'Command failed: $e');
     }
   }
 

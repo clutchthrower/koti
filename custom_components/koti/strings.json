@@ -22,5 +22,30 @@
       "no_device_id": "The discovered device didn't report an id.",
       "no_host": "The discovered device didn't report a usable address."
     }
+  },
+  "entity": {
+    "sensor": {
+      "battery": {
+        "name": "Battery"
+      }
+    },
+    "binary_sensor": {
+      "charging": {
+        "name": "Charging"
+      }
+    },
+    "update": {
+      "app_update": {
+        "name": "App update"
+      }
+    },
+    "button": {
+      "restart_app": {
+        "name": "Restart app"
+      },
+      "reboot_device": {
+        "name": "Reboot device"
+      }
+    }
   }
 }

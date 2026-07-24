@@ -1,12 +1,17 @@
 package com.koti.dashboard
 
 import android.Manifest
+import android.app.AlarmManager
+import android.app.PendingIntent
+import android.app.admin.DevicePolicyManager
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
@@ -14,7 +19,10 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.os.BatteryManager
 import android.os.Build
+import android.os.Handler
+import android.os.Process
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.core.app.ActivityCompat
@@ -280,6 +288,55 @@ class MainActivity : FlutterActivity() {
         sendspinAudioTrack = null
     }
 
+    // No permission needed for either battery level or charging status.
+    private fun getBatteryStatus(): Map<String, Any> {
+        val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        val level = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        val status = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            ?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+            status == BatteryManager.BATTERY_STATUS_FULL
+        return mapOf("level" to level, "charging" to charging)
+    }
+
+    // Schedules a relaunch via AlarmManager, then kills this process — the
+    // short delays give the HTTP response for this command (and this
+    // method-channel reply) time to actually flush before the process dies.
+    private fun restartApp() {
+        val intent = packageManager.getLaunchIntentForPackage(packageName)
+        val pendingIntent = intent?.let {
+            PendingIntent.getActivity(
+                this, 0, it,
+                PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
+        if (pendingIntent != null) {
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            alarmManager.set(AlarmManager.RTC, System.currentTimeMillis() + 500, pendingIntent)
+        }
+        Handler(mainLooper).postDelayed({
+            Process.killProcess(Process.myPid())
+            Runtime.getRuntime().exit(0)
+        }, 300)
+    }
+
+    // A normal Android app cannot reboot the device — android.permission.
+    // REBOOT is signature-level. This only succeeds if the tablet has been
+    // set up as a Device Owner (see KotiDeviceAdminReceiver's doc comment
+    // and README.md for the one-time adb command); otherwise it reports
+    // that plainly rather than silently failing.
+    private fun rebootDevice(): String {
+        val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        if (!dpm.isDeviceOwnerApp(packageName)) return "requires_device_owner"
+        val adminComponent = ComponentName(this, KotiDeviceAdminReceiver::class.java)
+        return try {
+            dpm.reboot(adminComponent)
+            "ok"
+        } catch (_: Exception) {
+            "error"
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
@@ -402,6 +459,16 @@ class MainActivity : FlutterActivity() {
                     "stopSendspinDiscovery" -> {
                         stopSendspinDiscovery()
                         result.success(null)
+                    }
+                    "getBatteryStatus" -> {
+                        result.success(getBatteryStatus())
+                    }
+                    "restartApp" -> {
+                        result.success(null)
+                        restartApp()
+                    }
+                    "rebootDevice" -> {
+                        result.success(rebootDevice())
                     }
                     else -> result.notImplemented()
                 }

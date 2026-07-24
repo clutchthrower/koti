@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Required to register KotiDeviceAdminReceiver as a device admin at all.
+     No specific policies are declared here — DevicePolicyManager.reboot()
+     only checks that this app IS the device owner (set via `adb shell dpm
+     set-device-owner`, not through this file's contents), so this stays
+     minimal. -->
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies>
+    </uses-policies>
+</device-admin>

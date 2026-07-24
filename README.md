@@ -50,8 +50,21 @@ updates itself from new releases here.
 Not on HACS yet — install manually: copy `custom_components/koti` from this repo into your
 HA config's `custom_components/` folder and restart Home Assistant. The tablet advertises
 itself automatically, no setup needed in the app — HA notifies you when it discovers the
-tablet; approve it and a `media_player.koti_{name}` entity appears, giving direct
-play/pause/volume control from HA, independent of Music Assistant.
+tablet; approve it and a device appears with: a `media_player.koti_{name}` entity (direct
+play/pause/next/previous/volume control — routes to whatever Music Assistant/Sendspin
+session is connected when there is one, or the tablet's own direct-URL playback
+otherwise), battery level and charging sensors, an app-version/update sensor, and
+"Restart App"/"Reboot Device" buttons.
+
+**Reboot Device** only works if the tablet has been set up as a
+[Device Owner](https://developer.android.com/work/dpc/build-dpc#do) — a normal Android app
+has no way to reboot the device otherwise. This is optional and per-tablet: run, before
+adding any Google account to the tablet,
+```
+adb shell dpm set-device-owner com.koti.dashboard/.KotiDeviceAdminReceiver
+```
+Without this, the button still appears but reports it isn't available rather than doing
+nothing silently. "Restart App" (just this app, not the whole device) needs no setup at all.
 
 ## Development
 

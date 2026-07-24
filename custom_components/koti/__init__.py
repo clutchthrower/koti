@@ -19,7 +19,13 @@ from .coordinator import KotiCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.MEDIA_PLAYER]
+PLATFORMS = [
+    Platform.MEDIA_PLAYER,
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    Platform.UPDATE,
+    Platform.BUTTON,
+]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

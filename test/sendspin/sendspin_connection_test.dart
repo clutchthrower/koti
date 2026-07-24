@@ -82,7 +82,7 @@ class _FakeMusicAssistantServer {
     await sendJson(const SendspinEnvelope(MessageType.serverHello, {'name': 'Fake MA'}));
     final clientHello = await receiveJson();
     expect(clientHello['unpaired_access'], {'enabled': true});
-    expect(clientHello['supported_roles'], contains('player@v1'));
+    expect(clientHello['supported_roles'], containsAll(['player@v1', 'controller@v1']));
 
     final activatePayload = {
       'activities': ['playback'],

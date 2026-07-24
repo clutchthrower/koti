@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -57,9 +58,10 @@ class _FakeMusicAssistantServer {
   }
 
   /// Runs the handshake through activation, then the extra steady-state
-  /// exchange this test needs. Returns the `client/state` payloads received
-  /// (in order) for the test to assert on.
-  Future<List<Map<String, dynamic>>> run() async {
+  /// exchange this test needs. Returns the `client/state` payloads
+  /// received, plus the `client/command` payload sent afterward (the
+  /// controller-role transport command the test triggers), for assertions.
+  Future<(List<Map<String, dynamic>>, Map<String, dynamic>)> run() async {
     final clientInitRaw = await _pump.nextText();
     final clientInit = SendspinEnvelope.decode(clientInitRaw);
     final clientId = base64UrlNoPadDecode(clientInit.payload['client_id'] as String);
@@ -132,7 +134,10 @@ class _FakeMusicAssistantServer {
 
     await _sendAudioChunk(t0, Uint8List.fromList(List.generate(16, (i) => i)));
 
-    return clientStates;
+    final controllerCommand = await _receiveJson();
+    expect(controllerCommand.type, MessageType.clientCommand);
+
+    return (clientStates, controllerCommand.payload);
   }
 }
 
@@ -193,7 +198,7 @@ void main() {
 
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final serverStatic = await newX25519KeyPair();
-    late Future<List<Map<String, dynamic>>> fakeServerResult;
+    late Future<(List<Map<String, dynamic>>, Map<String, dynamic>)> fakeServerResult;
     server.listen((request) async {
       final socket = await WebSocketTransformer.upgrade(request);
       fakeServerResult = _FakeMusicAssistantServer(socket, serverStatic).run();
@@ -207,10 +212,14 @@ void main() {
 
     final player = SendspinPlayer(connection);
     await player.start();
+    // Fired without awaiting: the fake server's run() is already waiting
+    // for exactly this message by the time it arrives.
+    unawaited(player.controllerPlay());
 
-    final clientStates = await fakeServerResult;
+    final (clientStates, controllerCommand) = await fakeServerResult;
     expect(clientStates.single['player']['volume'], 100);
     expect(clientStates.single['player']['muted'], false);
+    expect(controllerCommand['controller'], {'command': 'play'});
 
     // Give the async audio-chunk handling a moment to reach the native
     // channel (scheduling delay is ~0 here since the chunk's timestamp is

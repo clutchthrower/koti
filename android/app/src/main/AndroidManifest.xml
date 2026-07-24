@@ -50,6 +50,21 @@
                 <category android:name="android.intent.category.DEFAULT"/>
             </intent-filter>
         </activity>
+        <!-- Enables Device Owner mode (opt-in, via `adb shell dpm
+             set-device-owner`) — required for the Reboot Device action to
+             actually work; without it, that action just reports it isn't
+             available. See README.md for the one-time setup command. -->
+        <receiver
+            android:name=".KotiDeviceAdminReceiver"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_policies" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED"/>
+            </intent-filter>
+        </receiver>
         <!-- Shares the downloaded update APK with the system installer. -->
         <provider
             android:name="androidx.core.content.FileProvider"
