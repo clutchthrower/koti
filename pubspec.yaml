@@ -73,6 +73,12 @@ dependencies:
   # the hand-rolled Noise KKpsk2 handshake (lib/sendspin/noise/)
   cryptography: ^2.7.0
 
+  # Splash screen's house-drawing animation (assets/animations/) — the
+  # project's first animation-library dependency (everywhere else uses
+  # plain Path/PathMetric reveals), a deliberate one-off exception for a
+  # single small vector asset rather than a hand-painted path.
+  lottie: ^3.3.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -100,6 +106,7 @@ flutter:
     - assets/rooms/
     - assets/rooms/blur/
     - assets/mobile/
+    - assets/animations/
 
   fonts:
     - family: Hanken Grotesk

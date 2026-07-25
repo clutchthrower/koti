@@ -56,10 +56,19 @@ class StateStore extends ChangeNotifier {
     await ws.subscribeEvents('state_changed');
     final result = await ws.getStates();
     final list = result['result'] as List? ?? [];
+    final freshIds = <String>{};
     for (final raw in list) {
       final entity = EntityState.fromJson((raw as Map).cast<String, dynamic>());
       _states[entity.entityId] = entity;
+      freshIds.add(entity.entityId);
     }
+    // get_states is authoritative on every (re)connect — drop anything HA
+    // no longer reports (renamed, removed, or an orphaned registry
+    // leftover from an integration re-registering a device). Without this,
+    // a since-deleted entity_id stays "available" in the local cache
+    // forever at whatever state it was last seen in, since merging alone
+    // never removes a key.
+    _states.removeWhere((id, _) => !freshIds.contains(id));
     notifyListeners();
     _notifyAllEntityListeners();
     unawaited(_saveCache());
@@ -70,7 +79,18 @@ class StateStore extends ChangeNotifier {
     if (event == null || event['event_type'] != 'state_changed') return;
     final data = event['data'] as Map<String, dynamic>;
     final newStateJson = data['new_state'] as Map<String, dynamic>?;
-    if (newStateJson == null) return;
+    if (newStateJson == null) {
+      // HA signals entity removal this way (new_state is null, not a
+      // separate event type) — without handling it, a removed entity_id
+      // lingers in the local cache exactly like the get_states case above.
+      final entityId = data['entity_id'] as String?;
+      if (entityId != null && _states.remove(entityId) != null) {
+        notifyListeners();
+        _notifyEntityListeners(entityId);
+        unawaited(_saveCache());
+      }
+      return;
+    }
     final entity = EntityState.fromJson(newStateJson);
     _states[entity.entityId] = entity;
     notifyListeners();
@@ -179,12 +199,32 @@ class StateStore extends ChangeNotifier {
     return ws.getEntityRegistry();
   }
 
+  /// WebSocket-only — no REST fallback exists for this HA command.
+  Future<Map<String, dynamic>> browseMedia(
+    String entityId, {
+    String? mediaContentType,
+    String? mediaContentId,
+  }) {
+    if (ws.status != HaConnectionStatus.connected) {
+      throw StateError('Not connected to Home Assistant');
+    }
+    return ws.browseMedia(
+      entityId,
+      mediaContentType: mediaContentType,
+      mediaContentId: mediaContentId,
+    );
+  }
+
   Future<void> forceRefresh() async {
     final list = await rest.states();
+    final freshIds = <String>{};
     for (final raw in list) {
       final entity = EntityState.fromJson((raw as Map).cast<String, dynamic>());
       _states[entity.entityId] = entity;
+      freshIds.add(entity.entityId);
     }
+    // Same replace-not-merge treatment as _onConnected — see comment there.
+    _states.removeWhere((id, _) => !freshIds.contains(id));
     notifyListeners();
     _notifyAllEntityListeners();
     await _saveCache();

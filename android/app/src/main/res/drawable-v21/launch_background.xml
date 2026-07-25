@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Shown by Android while the app process starts: plain tan matching the
-     animated splash's canvas, so the drawing animation appears to start
-     on the very first frame Android shows. -->
+<!-- Shown by Android while the app process starts: plain dark neutral
+     matching the animated splash's canvas (koti_splash_screen.dart's
+     KotiSplashScreen.background), so the drawing animation appears to
+     start on the very first frame Android shows instead of flashing a
+     different color first. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="#B8A18F" />
+            <solid android:color="#1A1A1A" />
         </shape>
     </item>
 </layer-list>

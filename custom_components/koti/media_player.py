@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from homeassistant.components.media_player import (
     MediaPlayerEntity,
     MediaPlayerEntityFeature,
@@ -9,14 +11,27 @@ from homeassistant.components.media_player import (
     MediaType,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, State, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .coordinator import KotiCoordinator
 from .entity import device_info_for
+
+# State/attributes mirrored verbatim from the Music-Assistant-mirrored
+# sibling entity while a Sendspin session is live — see _mirror_state.
+_MIRRORED_ATTRS = (
+    "media_title",
+    "media_artist",
+    "media_album_name",
+    "media_duration",
+    "shuffle",
+    "repeat",
+)
 
 SUPPORTED_FEATURES = (
     MediaPlayerEntityFeature.PLAY_MEDIA
@@ -60,16 +75,126 @@ class KotiMediaPlayer(CoordinatorEntity[KotiCoordinator], MediaPlayerEntity):
         super().__init__(coordinator)
         self._entry = entry
         device_name = entry.data.get("name", entry.title)
-        self._attr_name = f"Koti {device_name}"
-        self._attr_unique_id = entry.unique_id
+        # The app's own default device name (and the naming convention most
+        # users land on) already starts with "Koti" — e.g. "Koti Dining
+        # Room Tablet" — so blindly prepending it again produced a garbled
+        # "Koti Koti Dining Room Tablet" display name.
+        prefix = "" if device_name.lower().startswith("koti") else "Koti "
+        self._attr_name = f"{prefix}{device_name}"
+        # Deliberately NOT entry.unique_id verbatim. Music Assistant mirrors
+        # a Sendspin client into HA as a "universal_player" entity whose own
+        # unique_id is "up" + a device key derived from the raw player_id
+        # (which for Sendspin is exactly our client_id, itself set to this
+        # same entry.unique_id) — confirmed by reading MA's actual installed
+        # source (universal_player/provider.py: `_get_device_key_from_players`
+        # falls back to `player_id.replace(":", "").replace("-", "").lower()`
+        # when no MAC/UUID identifier exists, then
+        # `f"{UNIVERSAL_PLAYER_PREFIX}{device_key}"` with
+        # UNIVERSAL_PLAYER_PREFIX = "up") and confirmed live against this
+        # integration's own MA server (settings.json literally has
+        # "up<device_id>" as the mirrored player's id). Matching that string
+        # exactly — rather than the bare entry.unique_id — is what lets the
+        # app's own dedup (music_players_popup.dart's _dedupedPlayerIds,
+        # which groups entities by shared unique_id) recognize this entity
+        # and MA's mirrored one as the same physical speaker.
+        self._attr_unique_id = f"up{entry.unique_id}"
         self._attr_device_info = device_info_for(entry)
+        # The Sendspin/Music-Assistant-mirrored sibling entity that shares
+        # this same unique_id (see the comment above) — resolved lazily
+        # since it may not exist in the registry yet (Sendspin only
+        # registers with MA once the tablet actually connects). Set once
+        # found in _ensure_sendspin_listener(); see its own docstring for
+        # why this entity can't derive play/pause/track state on its own.
+        self._sendspin_entity_id: str | None = None
+        self._unsub_sendspin_listener: Callable[[], None] | None = None
         self._update_from_coordinator()
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._ensure_sendspin_listener()
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub_sendspin_listener is not None:
+            self._unsub_sendspin_listener()
+            self._unsub_sendspin_listener = None
+        await super().async_will_remove_from_hass()
+
+    def _ensure_sendspin_listener(self) -> None:
+        """Finds and subscribes to the Music-Assistant-mirrored sibling
+        entity for this same physical tablet, if it exists yet.
+
+        This entity's own REST API (KotiCoordinator's poll) only ever knows
+        whether *its own* direct-URL just_audio playback is active — the
+        Sendspin protocol streams raw PCM with no track metadata, so
+        nothing about what Music Assistant is actually playing (state,
+        title, artist, position...) is knowable from the tablet's own side
+        at all. Music Assistant's own mirrored entity is the only place
+        that ever knows it — so once Sendspin's connected, this entity's
+        displayed state/attributes are mirrored from that sibling entity's
+        HA state instead of being derived locally. Without this, this
+        integration's own media_player looked permanently idle/blank the
+        moment a Sendspin session took over, since nothing here ever fed it
+        real state.
+        """
+        if self._sendspin_entity_id is not None:
+            return
+        registry = er.async_get(self.hass)
+        for candidate in registry.entities.values():
+            if (
+                candidate.platform == "music_assistant"
+                and candidate.domain == "media_player"
+                and candidate.unique_id == self._attr_unique_id
+            ):
+                self._sendspin_entity_id = candidate.entity_id
+                break
+        if self._sendspin_entity_id is None:
+            return
+        self._unsub_sendspin_listener = async_track_state_change_event(
+            self.hass, [self._sendspin_entity_id], self._handle_sendspin_state_change
+        )
+        self._mirror_state(self.hass.states.get(self._sendspin_entity_id))
+
+    @callback
+    def _handle_sendspin_state_change(self, event: Event[EventStateChangedData]) -> None:
+        self._mirror_state(event.data["new_state"])
+        self.async_write_ha_state()
+
+    def _mirror_state(self, source: State | None) -> None:
+        if source is None or source.state in ("unavailable", "unknown"):
+            return
+        self._attr_state = source.state
+        for attr in _MIRRORED_ATTRS:
+            setattr(self, f"_attr_{attr}", source.attributes.get(attr))
+        volume = source.attributes.get("volume_level")
+        if volume is not None:
+            self._attr_volume_level = volume
+        self._attr_is_volume_muted = source.attributes.get("is_volume_muted")
+        position = source.attributes.get("media_position")
+        if position is not None:
+            self._attr_media_position = position
+            self._attr_media_position_updated_at = source.attributes.get(
+                "media_position_updated_at"
+            ) or dt_util.utcnow()
 
     def _update_from_coordinator(self) -> None:
         data = self.coordinator.data or {}
-        # The protocol only reports whether a URL is loaded, not whether
-        # it's playing vs. paused — so a poll can only ever confirm IDLE;
-        # play/pause/stop set the more specific state themselves below.
+        if self._sendspin_connected:
+            # self.hass is unset on the very first call (from __init__,
+            # before this entity's added to hass) — nothing to resolve yet.
+            if self.hass is not None:
+                self._ensure_sendspin_listener()
+            # Real state comes from _mirror_state via the sibling listener
+            # once resolved; until it resolves (a brief window right after
+            # Sendspin connects, before Music Assistant's own entity shows
+            # up in the registry), fall through to at least report PLAYING
+            # rather than a stale/misleading IDLE.
+            if self._sendspin_entity_id is not None:
+                return
+            self._attr_state = MediaPlayerState.PLAYING
+            return
+        # The direct-URL protocol only reports whether a URL is loaded, not
+        # whether it's playing vs. paused — so a poll can only ever confirm
+        # IDLE; play/pause/stop set the more specific state themselves below.
         if not data.get("soundUrlPlaying"):
             self._attr_state = MediaPlayerState.IDLE
         elif self._attr_state not in (MediaPlayerState.PLAYING, MediaPlayerState.PAUSED):

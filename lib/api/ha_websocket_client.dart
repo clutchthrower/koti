@@ -253,6 +253,30 @@ class HaWebSocketClient {
     return result.whereType<Map>().map((m) => m.cast<String, dynamic>()).toList();
   }
 
+  /// Hierarchical media browsing (`media_player/browse_media`) — the
+  /// standard HA media_player API, which Music Assistant's integration
+  /// implements to expose real drill-down (artist -> their albums, album/
+  /// playlist -> their tracks) instead of the flat get_library/search
+  /// results this app used to always instant-play. Omit both content
+  /// params for the root listing (Artists/Albums/Playlists/Radio/Tracks).
+  Future<Map<String, dynamic>> browseMedia(
+    String entityId, {
+    String? mediaContentType,
+    String? mediaContentId,
+  }) async {
+    final msg = await sendCommand({
+      'type': 'media_player/browse_media',
+      'entity_id': entityId,
+      if (mediaContentType != null) 'media_content_type': mediaContentType,
+      if (mediaContentId != null) 'media_content_id': mediaContentId,
+    });
+    if (msg['success'] != true) {
+      final error = msg['error'] as Map<String, dynamic>?;
+      throw HaServiceException(error?['message'] as String? ?? 'Browse failed');
+    }
+    return (msg['result'] as Map<String, dynamic>?) ?? const {};
+  }
+
   void _flushQueue() {
     for (final payload in _resubscribeQueue) {
       final id = _nextId();

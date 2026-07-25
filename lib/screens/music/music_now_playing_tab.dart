@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/entity_state.dart';
 import '../../store/settings_store.dart';
 import '../../store/state_store.dart';
 import '../../theme/koti_theme.dart';
@@ -129,7 +130,7 @@ class _MusicNowPlayingTabState extends State<MusicNowPlayingTab> {
 
         final art = _AlbumArt(
           pictureUrl: pictureUrl,
-          size: sideBySide ? 260 : 220,
+          size: sideBySide ? 300 : 260,
           accessToken: settings.accessToken,
         );
 
@@ -243,13 +244,23 @@ class _MusicNowPlayingTabState extends State<MusicNowPlayingTab> {
     );
   }
 
-  Future<void> _showGroupSheet(BuildContext context, StateStore store) {
+  Future<void> _showGroupSheet(BuildContext context, StateStore store) async {
     final tokens = KotiTheme.of(context);
-    final others = store.all.values
-        .where((e) => e.domain == 'media_player' && e.entityId != widget.entityId)
+    // Same dedup the Players popup applies (music_players_popup.dart) —
+    // without it, every Cast/webOS-plus-Music-Assistant pair (and any
+    // stale registry leftover) shows up twice as separate checkboxes here
+    // too, since this list was built straight off store.all with no
+    // filtering at all.
+    final candidateIds =
+        availablePlayerIds(store).where((id) => id != widget.entityId).toList();
+    final dedupedIds = await dedupedPlayerIds(store, candidateIds);
+    final others = dedupedIds
+        .map((id) => store.get(id))
+        .whereType<EntityState>()
         .toList()
       ..sort((a, b) => a.attr<String>('friendly_name', a.entityId)
           .compareTo(b.attr<String>('friendly_name', b.entityId)));
+    if (!context.mounted) return;
     final current = store.get(widget.entityId);
     final currentGroup =
         (current?.attributes['group_members'] as List?)?.cast<String>() ?? const [];
@@ -326,7 +337,8 @@ class _MusicNowPlayingTabState extends State<MusicNowPlayingTab> {
 
 /// Big rounded album-art tile — the hero of a HOMEii Flow-style now-playing
 /// view. A soft shadow (not a blur filter, just a static drop-shadow) lifts
-/// it off the ambient-tinted background behind it.
+/// it off the ambient-tinted background behind it, and crossfades to the
+/// next track's art (keyed on URL) instead of popping instantly.
 class _AlbumArt extends StatelessWidget {
   final String? pictureUrl;
   final double size;
@@ -339,32 +351,37 @@ class _AlbumArt extends StatelessWidget {
     final tokens = KotiTheme.of(context);
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
+            color: Colors.black.withValues(alpha: 0.45),
+            blurRadius: 32,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: pictureUrl != null
-            ? Image.network(
-                pictureUrl!,
-                width: size,
-                height: size,
-                fit: BoxFit.cover,
-                headers: {'Authorization': 'Bearer ${accessToken ?? ''}'},
-                errorBuilder: (_, __, ___) => _fallback(tokens, size),
-              )
-            : _fallback(tokens, size),
+        borderRadius: BorderRadius.circular(24),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 450),
+          child: pictureUrl != null
+              ? Image.network(
+                  pictureUrl!,
+                  key: ValueKey(pictureUrl),
+                  width: size,
+                  height: size,
+                  fit: BoxFit.cover,
+                  headers: {'Authorization': 'Bearer ${accessToken ?? ''}'},
+                  errorBuilder: (_, __, ___) => _fallback(tokens, size),
+                )
+              : _fallback(tokens, size, key: const ValueKey('no-art')),
+        ),
       ),
     );
   }
 
-  Widget _fallback(KotiTokens tokens, double size) => Container(
+  Widget _fallback(KotiTokens tokens, double size, {Key? key}) => Container(
+        key: key,
         width: size,
         height: size,
         color: tokens.iconCircleBackground,
@@ -382,6 +399,12 @@ class _TitleBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = KotiTheme.of(context);
+    // A soft drop-shadow, not a solid outline — lets the now much-lighter
+    // ambient background (see music_assistant_screen.dart's scrim) show
+    // its color while keeping the title readable over bright artwork.
+    final titleShadow = [
+      Shadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 12, offset: const Offset(0, 2)),
+    ];
     return Column(
       crossAxisAlignment: centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
       children: [
@@ -393,17 +416,23 @@ class _TitleBlock extends StatelessWidget {
           style: TextStyle(
               color: tokens.textPrimary,
               fontWeight: FontWeight.w800,
-              fontSize: centered ? 20 : 28,
-              height: 1.15),
+              fontSize: centered ? 24 : 34,
+              letterSpacing: -0.4,
+              height: 1.1,
+              shadows: titleShadow),
         ),
         if (subtitle != null) ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: 5),
           Text(
             subtitle!,
             textAlign: centered ? TextAlign.center : TextAlign.start,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: tokens.textSecondary, fontSize: 15),
+            style: TextStyle(
+                color: tokens.textSecondary,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                shadows: titleShadow),
           ),
         ],
       ],
@@ -473,8 +502,11 @@ class _ActionIconRow extends StatelessWidget {
 
 /// Either [icon] (a Material icon) or [assetIcon] (a bundled SVG name, for
 /// icons like the speaker-group glyph Material doesn't have) must be given.
-class _RoundIconButton extends StatelessWidget {
-  static const _size = 36.0;
+/// Scales down slightly under the finger on press — a purely-transform,
+/// no-extra-repaint bit of tactile feedback so these read as physical
+/// buttons rather than flat static icons.
+class _RoundIconButton extends StatefulWidget {
+  static const _size = 38.0;
 
   final IconData? icon;
   final String? assetIcon;
@@ -491,26 +523,49 @@ class _RoundIconButton extends StatelessWidget {
   }) : assert(icon != null || assetIcon != null);
 
   @override
+  State<_RoundIconButton> createState() => _RoundIconButtonState();
+}
+
+class _RoundIconButtonState extends State<_RoundIconButton> {
+  bool _pressed = false;
+
+  void _setPressed(bool v) {
+    if (widget.onTap == null) return;
+    setState(() => _pressed = v);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final tokens = KotiTheme.of(context);
-    final color = active ? tokens.activeColor : tokens.textSecondary;
+    final color = widget.active ? tokens.activeColor : tokens.textSecondary;
+    const size = _RoundIconButton._size;
     return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: active
-            ? tokens.activeColor.withValues(alpha: 0.18)
-            : tokens.iconCircleBackground,
-        shape: const CircleBorder(),
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: onTap,
-          child: SizedBox(
-            width: _size,
-            height: _size,
-            child: Center(
-              child: assetIcon != null
-                  ? KotiIcon(assetIcon!, size: _size * 0.5, color: color)
-                  : Icon(icon, size: _size * 0.5, color: color),
+      message: widget.tooltip,
+      child: AnimatedScale(
+        scale: _pressed ? 0.88 : 1.0,
+        duration: const Duration(milliseconds: 110),
+        curve: Curves.easeOut,
+        child: Material(
+          color: widget.active
+              ? tokens.activeColor.withValues(alpha: 0.20)
+              : tokens.iconCircleBackground,
+          shape: const CircleBorder(
+            side: BorderSide(color: Color.fromRGBO(255, 255, 255, 0.08)),
+          ),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: widget.onTap,
+            onTapDown: (_) => _setPressed(true),
+            onTapCancel: () => _setPressed(false),
+            onTapUp: (_) => _setPressed(false),
+            child: SizedBox(
+              width: size,
+              height: size,
+              child: Center(
+                child: widget.assetIcon != null
+                    ? KotiIcon(widget.assetIcon!, size: size * 0.5, color: color)
+                    : Icon(widget.icon, size: size * 0.5, color: color),
+              ),
             ),
           ),
         ),
@@ -591,7 +646,6 @@ class _TransportRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = KotiTheme.of(context);
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -607,20 +661,7 @@ class _TransportRow extends StatelessWidget {
         _RoundIconButton(
             icon: Icons.skip_previous, tooltip: 'Previous', active: false, onTap: onPrevious),
         const SizedBox(width: 10),
-        Material(
-          color: tokens.activeColor,
-          shape: const CircleBorder(),
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: onPlayPause,
-            child: SizedBox(
-              width: 60,
-              height: 60,
-              child: Icon(playing ? Icons.pause : Icons.play_arrow,
-                  size: 30, color: Colors.white),
-            ),
-          ),
-        ),
+        _PlayPauseButton(playing: playing, onTap: onPlayPause),
         const SizedBox(width: 10),
         _RoundIconButton(icon: Icons.skip_next, tooltip: 'Next', active: false, onTap: onNext),
         if (repeat != null) ...[
@@ -633,6 +674,78 @@ class _TransportRow extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// The transport row's centerpiece — a flat solid fill read as inert next
+/// to everything else, so this gets a subtle top-lit gradient, a soft
+/// colored glow (echoing the accent instead of a generic black shadow),
+/// and the same press-scale the round icon buttons get.
+class _PlayPauseButton extends StatefulWidget {
+  final bool playing;
+  final VoidCallback onTap;
+
+  const _PlayPauseButton({required this.playing, required this.onTap});
+
+  @override
+  State<_PlayPauseButton> createState() => _PlayPauseButtonState();
+}
+
+class _PlayPauseButtonState extends State<_PlayPauseButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = KotiTheme.of(context);
+    return AnimatedScale(
+      scale: _pressed ? 0.90 : 1.0,
+      duration: const Duration(milliseconds: 110),
+      curve: Curves.easeOut,
+      child: Container(
+        width: 68,
+        height: 68,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color.lerp(tokens.activeColor, Colors.white, 0.18)!,
+              tokens.activeColor,
+            ],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: tokens.activeColor.withValues(alpha: 0.45),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: widget.onTap,
+            onTapDown: (_) => setState(() => _pressed = true),
+            onTapCancel: () => setState(() => _pressed = false),
+            onTapUp: (_) => setState(() => _pressed = false),
+            child: Center(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: Icon(
+                  widget.playing ? Icons.pause : Icons.play_arrow,
+                  key: ValueKey(widget.playing),
+                  size: 32,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

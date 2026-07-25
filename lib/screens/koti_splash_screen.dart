@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart';
 
-/// Animated splash: a line-art house draws itself like a thick, rounded
-/// brush stroke. The "KOTI" wordmark is static — it fades in once the
-/// house finishes its first build and then stays put. The house itself
-/// keeps redrawing — draw, hold, erase, repeat — as a loading indicator
-/// in its own right, for as long as the app is still connecting. The
-/// moment it's ready, the house is allowed to finish its current redraw
-/// and settle before the dashboard takes over.
-///
-/// Single painter, plain [Path]/[PathMetric] reveals, no third-party
-/// packages — cheap enough for the old wall tablet.
+/// Animated splash: a single-line house-drawing animation (a Trim Path
+/// reveal baked into assets/animations/koti_house_intro.json — sourced
+/// from LottieFiles, recolored at runtime) plays draw → hold → erase →
+/// repeat, doubling as a loading indicator for as long as the app is
+/// still connecting. The "KOTI" wordmark is static — it fades in once the
+/// house finishes its first build and then stays put. The moment the app
+/// is ready, the house is allowed to finish its current redraw and settle
+/// before the dashboard takes over — same behavior this screen always
+/// had, just with a richer hand-drawn asset instead of the simple
+/// custom-painted house silhouette it replaces.
 class KotiSplashScreen extends StatefulWidget {
   /// Whether the app behind the splash is ready to be shown.
   final bool ready;
@@ -21,7 +22,13 @@ class KotiSplashScreen extends StatefulWidget {
     required this.onFinished,
   });
 
-  static const background = Color(0xFFB8A18F);
+  // A dark neutral already used elsewhere in the app (main.dart's dark
+  // onSurface) rather than the old warm tan — the rest of the app's
+  // "glass" look is a translucent surface over a photo, but a splash has
+  // nothing behind it to show through, so this is just that same family
+  // of dark tone as a plain solid instead.
+  static const background = Color(0xFF1A1A1A);
+  static const _strokeColor = Colors.white;
 
   @override
   State<KotiSplashScreen> createState() => _KotiSplashScreenState();
@@ -33,11 +40,22 @@ class _KotiSplashScreenState extends State<KotiSplashScreen>
     with TickerProviderStateMixin {
   late final AnimationController _intro = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1500),
+    duration: const Duration(milliseconds: 3200),
   );
   late final AnimationController _loop = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1400),
+    duration: const Duration(milliseconds: 3200),
+  );
+
+  // Drives the Lottie widget itself: its value (0..1, a fraction of the
+  // composition's own frame range) is set imperatively from _intro/_loop
+  // below rather than animated directly — the same draw/hold/erase timing
+  // this screen always used for its hand-painted reveal now drives the
+  // Lottie asset instead. Its own duration is irrelevant since nothing
+  // ever calls forward()/repeat() on it.
+  late final AnimationController _lottieController = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 1),
   );
 
   _Phase _phase = _Phase.intro;
@@ -46,6 +64,8 @@ class _KotiSplashScreenState extends State<KotiSplashScreen>
   @override
   void initState() {
     super.initState();
+    _intro.addListener(
+        () => _lottieController.value = Curves.easeInOut.transform(_intro.value));
     _intro.addStatusListener((status) {
       if (status == AnimationStatus.completed) _onIntroComplete();
     });
@@ -63,7 +83,7 @@ class _KotiSplashScreenState extends State<KotiSplashScreen>
   void _onIntroComplete() {
     // Always play the redraw loop at least once, even if the app was
     // already ready before the intro finished — on a fast connection the
-    // splash would otherwise flash past in ~1.5s with no loop at all.
+    // splash would otherwise flash past with no loop at all.
     setState(() {
       _titleVisible = true;
       _phase = _Phase.looping;
@@ -81,8 +101,9 @@ class _KotiSplashScreenState extends State<KotiSplashScreen>
     final v = _loop.value;
     if (v < _lastLoopValue) _loopsCompleted++;
     _lastLoopValue = v;
+    _lottieController.value = _loopCycle(v);
 
-    if (_loopsCompleted >= 1 && widget.ready && v >= 0.55 && v < 0.68) {
+    if (_loopsCompleted >= 1 && widget.ready && v >= 0.45 && v < 0.70) {
       _loop.stop();
       _finish();
     }
@@ -99,15 +120,18 @@ class _KotiSplashScreenState extends State<KotiSplashScreen>
   void dispose() {
     _intro.dispose();
     _loop.dispose();
+    _lottieController.dispose();
     super.dispose();
   }
 
   /// Draw 0→1, hold at 1, erase 1→0, then the loop repeats — the house
-  /// redrawing itself doubles as the loading cue.
+  /// redrawing itself doubles as the loading cue. A generous hold plateau
+  /// (0.45-0.70, wider than the original hand-painted version's) so the
+  /// finished house is actually appreciable rather than a blink.
   double _loopCycle(double v) {
-    if (v < 0.55) return Curves.easeInOut.transform(v / 0.55);
-    if (v < 0.68) return 1.0;
-    return 1.0 - Curves.easeIn.transform((v - 0.68) / 0.32);
+    if (v < 0.45) return Curves.easeInOut.transform(v / 0.45);
+    if (v < 0.70) return 1.0;
+    return 1.0 - Curves.easeIn.transform((v - 0.70) / 0.30);
   }
 
   @override
@@ -125,25 +149,106 @@ class _KotiSplashScreenState extends State<KotiSplashScreen>
         },
         child: Stack(
           children: [
-            Positioned.fill(
-              child: RepaintBoundary(
-                child: AnimatedBuilder(
-                  animation: Listenable.merge([_intro, _loop]),
-                  builder: (context, _) {
-                    final houseReveal = _phase == _Phase.intro
-                        ? Curves.easeInOut.transform(_intro.value)
-                        : _loopCycle(_loop.value);
-                    return CustomPaint(
-                      painter: _KotiSplashPainter(houseReveal: houseReveal),
+            SafeArea(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Builder(builder: (context) {
+                    // Explicit width AND height (a square, matching the
+                    // composition's own 1000x1000 canvas) rather than
+                    // width-only — leaving height to intrinsic sizing
+                    // was producing an off-center result. Same
+                    // shortestSide-based sizing convention the original
+                    // custom-painted house used — safe on both portrait
+                    // and landscape wall tablets.
+                    final houseSize = MediaQuery.sizeOf(context).shortestSide * 0.85;
+                    // Wrapped the same way as the title below: an
+                    // explicit full-width SizedBox + Center, rather than
+                    // leaving this as the Column's widest child. Column
+                    // sizes its own cross-axis to fit its widest child
+                    // under loose constraints — with only this box in
+                    // play that widest child was the house itself, so its
+                    // measured position drifted depending on what the
+                    // title's own wrapper did to the Column's resolved
+                    // width. Both children now independently claim full
+                    // width and center their own fixed-size content within
+                    // it, decoupling them from each other entirely.
+                    return SizedBox(
+                      width: double.infinity,
+                      child: Center(
+                        child: RepaintBoundary(
+                          child: SizedBox(
+                            width: houseSize,
+                            height: houseSize,
+                            child: Lottie.asset(
+                              'assets/animations/koti_house_intro.json',
+                              controller: _lottieController,
+                              fit: BoxFit.contain,
+                              alignment: Alignment.center,
+                              onLoaded: (composition) {
+                                _lottieController.duration = composition.duration;
+                              },
+                              delegates: LottieDelegates(
+                                values: [
+                                  ValueDelegate.strokeColor(
+                                    const ['**'],
+                                    value: KotiSplashScreen._strokeColor,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     );
-                  },
-                ),
+                  }),
+                  // Explicit full-width + Center rather than relying on
+                  // the Column's own cross-axis centering — measured live
+                  // on-device that the Text (with its manual spaces +
+                  // letterSpacing combination) was landing ~55px left of
+                  // true center under plain crossAxisAlignment.center, far
+                  // more than a letterSpacing trailing-space effect could
+                  // explain. This sidesteps whatever's actually causing
+                  // that rather than chasing a magic-number offset.
+                  SizedBox(
+                    width: double.infinity,
+                    child: Center(
+                      child: AnimatedOpacity(
+                        opacity: _titleVisible ? 1 : 0,
+                        duration: const Duration(milliseconds: 350),
+                        curve: Curves.easeOut,
+                        child: const Text(
+                          'K O T I',
+                          style: TextStyle(
+                            fontFamily: 'Hanken Grotesk',
+                            fontWeight: FontWeight.w700,
+                            fontSize: 22,
+                            letterSpacing: 8,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            Positioned.fill(
-              child: _TitleAndStatus(
-                titleVisible: _titleVisible,
-                connecting: _phase == _Phase.looping && !widget.ready,
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 48,
+              child: AnimatedOpacity(
+                opacity: _phase == _Phase.looping && !widget.ready ? 1 : 0,
+                duration: const Duration(milliseconds: 300),
+                child: const Text(
+                  'Connecting to Home Assistant…',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: 'Hanken Grotesk',
+                    fontSize: 14,
+                    color: Color.fromRGBO(255, 255, 255, 0.85),
+                  ),
+                ),
               ),
             ),
           ],
@@ -151,156 +256,4 @@ class _KotiSplashScreenState extends State<KotiSplashScreen>
       ),
     );
   }
-}
-
-/// Static "KOTI" wordmark (real type, not hand-drawn) plus the "Connecting…"
-/// status line, both simple fades — no path animation, matching the house
-/// which is the only thing that keeps moving.
-class _TitleAndStatus extends StatelessWidget {
-  final bool titleVisible;
-  final bool connecting;
-
-  const _TitleAndStatus({required this.titleVisible, required this.connecting});
-
-  @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final houseScale = size.shortestSide * 0.30;
-    final houseHeight = 1.05 * houseScale;
-    final gap = size.shortestSide * 0.10;
-    final titleTop = size.height / 2 - (houseHeight + gap) / 2 + houseHeight + gap;
-
-    return Stack(
-      children: [
-        Positioned(
-          left: 0,
-          right: 0,
-          top: titleTop - 8,
-          child: Center(
-            child: AnimatedOpacity(
-              opacity: titleVisible ? 1 : 0,
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.easeOut,
-              child: const Text(
-                'K O T I',
-                style: TextStyle(
-                  fontFamily: 'Hanken Grotesk',
-                  fontWeight: FontWeight.w700,
-                  fontSize: 22,
-                  letterSpacing: 8,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 48,
-          child: AnimatedOpacity(
-            opacity: connecting ? 1 : 0,
-            duration: const Duration(milliseconds: 300),
-            child: const Text(
-              'Connecting to Home Assistant…',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: 'Hanken Grotesk',
-                fontSize: 14,
-                color: Color.fromRGBO(255, 255, 255, 0.85),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Reveals [source] up to arc-length fraction [t] (0..1), walking its
-/// contours in the order they were added — the "pen" drawing the path.
-/// Reusing this with a shrinking [t] traces the same path backward,
-/// which is what makes the erase phase read as an eraser retracing the
-/// pen's steps rather than a fade.
-Path _revealPath(Path source, double t) {
-  final result = Path();
-  if (t <= 0) return result;
-  final metrics = source.computeMetrics().toList();
-  final total = metrics.fold<double>(0, (sum, m) => sum + m.length);
-  final target = total * t.clamp(0.0, 1.0);
-
-  var consumed = 0.0;
-  for (final metric in metrics) {
-    if (consumed >= target) break;
-    final remaining = target - consumed;
-    if (remaining >= metric.length) {
-      result.addPath(metric.extractPath(0, metric.length), Offset.zero);
-    } else {
-      result.addPath(metric.extractPath(0, remaining), Offset.zero);
-      break;
-    }
-    consumed += metric.length;
-  }
-  return result;
-}
-
-class _KotiSplashPainter extends CustomPainter {
-  final double houseReveal;
-
-  _KotiSplashPainter({required this.houseReveal});
-
-  static final Paint _stroke = Paint()
-    ..color = const Color(0xFFFFFFFF)
-    ..style = PaintingStyle.stroke
-    ..strokeWidth = 6.0
-    ..strokeCap = StrokeCap.round
-    ..strokeJoin = StrokeJoin.round;
-
-  /// Minimalist house as a thick rounded stroke: the silhouette (floor,
-  /// walls, roof) is ONE closed contour — the pen never lifts — so
-  /// [StrokeJoin.round] softens every corner into a gentle fillet. The
-  /// door is a second, separate contour.
-  Path _housePath(Offset center, double scale) {
-    Offset p(double x, double y) =>
-        Offset(center.dx + x * scale, center.dy + y * scale);
-
-    final outline = Path()
-      ..moveTo(p(-0.50, 0.50).dx, p(-0.50, 0.50).dy)
-      ..lineTo(p(0.50, 0.50).dx, p(0.50, 0.50).dy) // floor
-      ..lineTo(p(0.50, -0.10).dx, p(0.50, -0.10).dy) // right wall
-      ..lineTo(p(0.00, -0.55).dx, p(0.00, -0.55).dy) // roof right
-      ..lineTo(p(-0.50, -0.10).dx, p(-0.50, -0.10).dy) // roof left
-      ..close(); // left wall, back to start
-
-    final door = Path()
-      ..moveTo(p(-0.09, 0.50).dx, p(-0.09, 0.50).dy)
-      ..lineTo(p(-0.09, 0.16).dx, p(-0.09, 0.16).dy)
-      ..lineTo(p(0.09, 0.16).dx, p(0.09, 0.16).dy)
-      ..lineTo(p(0.09, 0.50).dx, p(0.09, 0.50).dy);
-
-    return outline..addPath(door, Offset.zero);
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final houseScale = size.shortestSide * 0.30;
-    final houseHeight = 1.05 * houseScale;
-    final gap = size.shortestSide * 0.10;
-    final titleCapHeight = size.shortestSide * 0.11;
-    final groupHeight = houseHeight + gap + titleCapHeight;
-    final top = size.height / 2 - groupHeight / 2;
-    final houseCenter =
-        Offset(size.width / 2, top + houseHeight / 2 - 0.025 * houseScale);
-
-    if (houseReveal > 0) {
-      canvas.drawPath(
-        _revealPath(_housePath(houseCenter, houseScale), houseReveal),
-        _stroke,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _KotiSplashPainter oldDelegate) =>
-      oldDelegate.houseReveal != houseReveal;
 }

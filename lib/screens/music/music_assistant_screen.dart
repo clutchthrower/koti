@@ -51,6 +51,54 @@ class _MusicAssistantScreenState extends State<MusicAssistantScreen>
   String? _blurredForUrl;
 
   @override
+  void initState() {
+    super.initState();
+    _selectOwnPlayerIfAvailable();
+  }
+
+  /// Defaults to this tablet's own player (Koti/Sendspin) rather than
+  /// leaving the tab on its empty state every launch — same shared-
+  /// unique_id trick `dedupedPlayerIds` already uses to recognize this
+  /// device's entities: "up" + this device's own id is what both the
+  /// direct-control `koti` entity and (once Sendspin/MA is connected) the
+  /// Music-Assistant-mirrored entity share. Prefers the `music_assistant`
+  /// one when both exist, since only that one gets full search/browse/
+  /// queue support via MA's own services. Silently leaves the empty state
+  /// in place (unchanged behavior) if the registry's unavailable (needs an
+  /// admin token) or this tablet isn't registered as a player at all.
+  Future<void> _selectOwnPlayerIfAvailable() async {
+    final store = Provider.of<StateStore>(context, listen: false);
+    final settings = Provider.of<SettingsStore>(context, listen: false);
+    final ownUniqueId = 'up${settings.deviceId}';
+    List<Map<String, dynamic>> registry;
+    try {
+      registry = await store.getEntityRegistry();
+    } catch (_) {
+      return;
+    }
+    final matches = registry.where((e) =>
+        e['unique_id'] == ownUniqueId &&
+        (e['entity_id'] as String?)?.startsWith('media_player.') == true &&
+        _isAvailable(store, e['entity_id'] as String));
+    if (matches.isEmpty) return;
+    final entry = matches.firstWhere(
+      (e) => e['platform'] == 'music_assistant',
+      orElse: () => matches.first,
+    );
+    final entityId = entry['entity_id'] as String;
+    // Only auto-select if nothing else was picked while the (admin-only,
+    // occasionally slow) registry fetch was in flight.
+    if (mounted && _selectedPlayer == null) {
+      setState(() => _selectedPlayer = entityId);
+    }
+  }
+
+  bool _isAvailable(StateStore store, String entityId) {
+    final state = store.get(entityId)?.state;
+    return state != null && state != 'unavailable' && state != 'unknown';
+  }
+
+  @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
@@ -112,18 +160,45 @@ class _MusicAssistantScreenState extends State<MusicAssistantScreen>
       fit: StackFit.expand,
       children: [
         Container(color: tokens.dialogBackground),
-        if (_blurredArt != null)
-          Image(image: _blurredArt!, fit: BoxFit.cover),
-        // A dark scrim over the blurred art keeps card text legible
-        // regardless of how bright the source artwork is.
+        // Crossfades between tracks' blurred art instead of popping
+        // instantly — keyed on the source URL so AnimatedSwitcher only
+        // animates on an actual track/album change, not every rebuild.
+        // AnimatedSwitcher's default internal Stack doesn't use
+        // StackFit.expand, so without this custom layoutBuilder the image
+        // sizes itself to its own small intrinsic (pre-blur decode target)
+        // size instead of covering the screen — BoxFit.cover then has
+        // nothing to actually stretch into.
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 700),
+          layoutBuilder: (currentChild, previousChildren) => Stack(
+            fit: StackFit.expand,
+            children: [...previousChildren, if (currentChild != null) currentChild],
+          ),
+          child: _blurredArt == null
+              ? const SizedBox.shrink(key: ValueKey('no-art'))
+              : Image(
+                  key: ValueKey(_blurredForUrl),
+                  image: _blurredArt!,
+                  fit: BoxFit.cover,
+                ),
+        ),
+        // A soft scrim — just enough to keep text legible over bright
+        // artwork, brightest near the hero art itself and only deepening
+        // toward the transport controls at the bottom. This used to run
+        // 55%-94% opaque, which crushed out virtually all of the album
+        // art's own color and made the tab look the same flat near-black
+        // no matter what was playing — the opposite of the ambient,
+        // color-led HOMEii Flow look this screen is meant to match.
         DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
+              stops: const [0.0, 0.45, 1.0],
               colors: [
-                tokens.dialogBackground.withValues(alpha: 0.55),
-                tokens.dialogBackground.withValues(alpha: 0.94),
+                tokens.dialogBackground.withValues(alpha: 0.12),
+                tokens.dialogBackground.withValues(alpha: 0.32),
+                tokens.dialogBackground.withValues(alpha: 0.70),
               ],
             ),
           ),

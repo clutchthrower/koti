@@ -14,7 +14,12 @@ class MusicGridTile extends StatelessWidget {
   final MusicItem item;
   final VoidCallback onTap;
 
-  const MusicGridTile({super.key, required this.item, required this.onTap});
+  /// A long-press "play this now" shortcut — offered for items that are
+  /// both expandable and directly playable (an artist/album/playlist),
+  /// since [onTap] on those prefers browsing in over instant-playing them.
+  final VoidCallback? onLongPress;
+
+  const MusicGridTile({super.key, required this.item, required this.onTap, this.onLongPress});
 
   @override
   Widget build(BuildContext context) {
@@ -25,9 +30,19 @@ class MusicGridTile extends StatelessWidget {
         ? null
         : (imageUrl.startsWith('http') ? imageUrl : '${settings.activeUrl}$imageUrl');
     final round = item.mediaType == 'artist' ? 9999.0 : 14.0;
+    // Grid tiles render at ~160 logical px (see maxCrossAxisExtent in
+    // music_browse_tab.dart/music_search_tab.dart) — without a decode-size
+    // hint, Image.network decodes each result at its full source
+    // resolution (MA's image proxy can serve 512px+ art) before scaling
+    // down for paint. A grid's worth of those decoding at once was heavy
+    // enough on this tablet's hardware to stutter the Sendspin audio
+    // thread running alongside it; capping the decode target to roughly
+    // the tile's actual on-screen size fixes that at the source.
+    final cacheWidth = (160 * MediaQuery.devicePixelRatioOf(context)).round();
 
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -39,6 +54,7 @@ class MusicGridTile extends StatelessWidget {
                   ? Image.network(
                       resolvedUrl,
                       fit: BoxFit.cover,
+                      cacheWidth: cacheWidth,
                       headers: {'Authorization': 'Bearer ${settings.accessToken ?? ''}'},
                       errorBuilder: (_, __, ___) => _fallback(tokens, round),
                     )

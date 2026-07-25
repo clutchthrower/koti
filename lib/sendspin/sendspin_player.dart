@@ -8,7 +8,7 @@ import 'wire/binary_frame.dart';
 import 'wire/envelope.dart';
 
 /// Drives one Sendspin connection's steady state (everything after
-/// `server/activate`): the `client/time`/`server/time` sync loop feeding
+/// `server/hello`): the `client/time`/`server/time` sync loop feeding
 /// [SendspinTimeFilter], `stream/start` format negotiation, scheduling
 /// incoming audio chunks into the native `AudioTrack` sink, reporting
 /// player state/volume back to the server, and — via the `controller@v1`
@@ -33,6 +33,16 @@ class SendspinPlayer {
   bool _sinkStarted = false;
   int _volume = 100;
   bool _muted = false;
+
+  // Bumped on every stream/clear, stream/end, and stream/start. Each
+  // incoming audio chunk captures the generation it belongs to before
+  // awaiting its scheduled-delivery delay (up to _minBufferMs out); if the
+  // generation has since moved on by the time that delay elapses, the
+  // chunk is stale (its stream was cleared/replaced mid-flight) and gets
+  // dropped instead of written — otherwise it lands in the native sink
+  // after the flush/new-track start that was supposed to silence it,
+  // which is what caused the old and new track to audibly overlap.
+  int _streamGeneration = 0;
 
   // Declared to the server in client/state — how far ahead of a chunk's
   // play deadline we'd like it delivered, and how much we can buffer.
@@ -103,6 +113,13 @@ class SendspinPlayer {
 
   Future<void> _sendClientState() {
     return _connection.send(SendspinEnvelope(MessageType.clientState, {
+      // Client-level operational state (separate from the player role's
+      // own volume/mute/etc.) — 'synchronized' is what actually satisfies
+      // the server's "waiting on initial state" gate for player@v1 and
+      // lets it start sending stream/start; omitting this field entirely
+      // still connects, but leaves the server's own idea of our state
+      // wherever it defaulted, which isn't guaranteed to unblock playback.
+      'state': 'synchronized',
       'player': {
         'volume': _volume,
         'muted': _muted,
@@ -128,7 +145,13 @@ class SendspinPlayer {
       case MessageType.streamStart:
         unawaited(_handleStreamStart(envelope.payload));
       case MessageType.streamClear:
+        // A track skip/seek — buffers reset, but the stream itself keeps
+        // going (unlike stream/end), so the sink stays alive and just
+        // discards whatever's currently buffered.
+        _streamGeneration++;
+        unawaited(_flushSink());
       case MessageType.streamEnd:
+        _streamGeneration++;
         unawaited(_stopSink());
       case MessageType.serverCommand:
         unawaited(_handleServerCommand(envelope.payload));
@@ -150,6 +173,13 @@ class SendspinPlayer {
       // never negotiate anything else for this client.
       return;
     }
+    // A new stream/start can arrive as a track change with no preceding
+    // stream/clear/stream/end (the server just keeps the connection's
+    // stream role active and starts the next track directly) — bump the
+    // generation here too so any chunks still in flight for the previous
+    // track get dropped rather than written into the freshly (re)started
+    // sink.
+    _streamGeneration++;
     await _channel.invokeMethod('startSendspinAudioSink', {
       'sampleRate': player['sample_rate'] ?? 48000,
       'channels': player['channels'] ?? 2,
@@ -161,6 +191,11 @@ class SendspinPlayer {
     if (!_sinkStarted) return;
     _sinkStarted = false;
     await _channel.invokeMethod('stopSendspinAudioSink');
+  }
+
+  Future<void> _flushSink() async {
+    if (!_sinkStarted) return;
+    await _channel.invokeMethod('flushSendspinAudioSink');
   }
 
   Future<void> _handleServerCommand(Map<String, dynamic> payload) async {
@@ -185,6 +220,7 @@ class SendspinPlayer {
 
   Future<void> _handleBinaryMessage(SendspinBinaryMessage message) async {
     if (message.type != BinaryMessageType.audioChunk || !_sinkStarted) return;
+    final generation = _streamGeneration;
     if (_timeFilter.isSynchronized) {
       final deadlineUs = _timeFilter.computeClientTime(message.payload.timestampUs);
       final delayUs = deadlineUs - _nowUs;
@@ -195,6 +231,7 @@ class SendspinPlayer {
     // Not yet synchronized: write immediately rather than dropping audio —
     // sync converges within the first few round trips in practice, and
     // AudioTrack's own buffer absorbs the resulting jitter until it does.
+    if (generation != _streamGeneration) return; // superseded mid-delay — belongs to a track that's since been cleared/replaced
     await _channel.invokeMethod('writeSendspinPcmChunk', {
       'bytes': message.payload.payload,
     });

@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
-import 'identity.dart';
 import 'sendspin_connection.dart';
 import 'sendspin_player.dart';
 
@@ -21,7 +20,7 @@ import 'sendspin_player.dart';
 /// whatever came before, matching a single physical speaker only ever
 /// being controlled by one Music Assistant server.
 class SendspinServer {
-  SendspinServer({required this.deviceName, this.port = defaultPort});
+  SendspinServer({required this.deviceName, required this.clientId, this.port = defaultPort});
 
   // Spec's recommended port for server-initiated discovery (this tablet
   // advertising itself for Music Assistant to find).
@@ -31,8 +30,21 @@ class SendspinServer {
   String deviceName;
   final int port;
 
+  /// The app's own stable device id (`SettingsStore.deviceId` — the same
+  /// one `custom_components/koti`'s media_player entity uses as its
+  /// `unique_id`), reused here as Sendspin's `client_id` rather than a
+  /// separately-generated identity. The deployed protocol only needs
+  /// `client_id` to be a stable, unique string, not a cryptographic key
+  /// (there's no Noise handshake to be the public half of) — reusing the
+  /// same id both integrations already share is what actually lets Music
+  /// Assistant's mirrored entity share a `unique_id` with the direct-control
+  /// entity, which is what the app's own duplicate-speaker dedup logic
+  /// (`dedupedPlayerIds` in `music_players_popup.dart`) keys on. Two
+  /// separately-generated identities for the same physical tablet is
+  /// exactly what made that dedup unable to recognize them as one device.
+  final String clientId;
+
   HttpServer? _httpServer;
-  SendspinIdentity? _identity;
   SendspinConnection? _connection;
   SendspinPlayer? _player;
 
@@ -46,15 +58,21 @@ class SendspinServer {
 
   Future<void> start() async {
     if (running) return;
-    _identity = await SendspinIdentity.load();
-    final server = await HttpServer.bind(InternetAddress.anyIPv4, port);
+    final server = await _bindWithRetry();
     _httpServer = server;
     server.listen(
-      (request) => _handleRequest(request).catchError((_) {
-        // A single malformed/aborted connection attempt shouldn't take the
-        // server down — matches koti_player_server.dart's own behavior.
+      // A single malformed/aborted connection attempt shouldn't take the
+      // server down — matches koti_ha_server.dart's own behavior.
+      // _handleRequest already logs its own failures; this only catches
+      // something escaping that (e.g. from the logging call itself).
+      (request) => _handleRequest(request).catchError((Object e) {
+        // ignore: avoid_print
+        print('[sendspin] request failed: $e');
       }),
-      onError: (_) {},
+      onError: (Object e) {
+        // ignore: avoid_print
+        print('[sendspin] server error: $e');
+      },
       cancelOnError: false,
     );
     try {
@@ -78,6 +96,23 @@ class SendspinServer {
     } catch (_) {}
   }
 
+  /// "Restart app" (MainActivity.kt's restartApp()) starts a fresh
+  /// Activity/FlutterEngine instance without a true OS-level process
+  /// kill, so this port can still be held by the outgoing instance's own
+  /// socket for a brief moment after this one's already trying to bind
+  /// it — a plain single bind() attempt would surface that as a hard
+  /// startup failure instead of the transient condition it actually is.
+  Future<HttpServer> _bindWithRetry() async {
+    for (var attempt = 1; ; attempt++) {
+      try {
+        return await HttpServer.bind(InternetAddress.anyIPv4, port);
+      } on SocketException {
+        if (attempt >= 5) rethrow;
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      }
+    }
+  }
+
   /// Re-announces under the new name without a full stop/start — used when
   /// the user renames the device in Settings while this is running.
   Future<void> updateName(String newName) async {
@@ -98,14 +133,28 @@ class SendspinServer {
         ..close();
       return;
     }
-    final socket = await WebSocketTransformer.upgrade(request);
-    await _disconnect(); // only one connection at a time
-    final connection = SendspinConnection(socket, _identity!, deviceName: deviceName);
-    _connection = connection;
-    await connection.handshakeAndActivate();
-    final player = SendspinPlayer(connection);
-    _player = player;
-    await player.start();
+    try {
+      final socket = await WebSocketTransformer.upgrade(request);
+      await _disconnect(); // only one connection at a time
+      final connection = SendspinConnection(socket, clientId: clientId, deviceName: deviceName);
+      _connection = connection;
+      await connection.handshakeAndActivate();
+      // ignore: avoid_print
+      print('[sendspin] connected to ${request.connectionInfo?.remoteAddress.address}');
+      final player = SendspinPlayer(connection);
+      _player = player;
+      await player.start();
+    } catch (e) {
+      // Kept minimal and permanent (not just a debugging leftover): a
+      // silently-swallowed handshake/protocol failure here is otherwise
+      // indistinguishable from the server never having started at all —
+      // exactly what made an earlier real incompatibility (this client
+      // built against a newer, unreleased protocol revision than what
+      // Music Assistant actually ships) take a long live-debugging session
+      // to even see happening.
+      // ignore: avoid_print
+      print('[sendspin] connection failed: $e');
+    }
   }
 
   Future<void> _disconnect() async {

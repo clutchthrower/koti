@@ -12,7 +12,17 @@ class MusicItemTile extends StatelessWidget {
   final VoidCallback onTap;
   final int? index;
 
-  const MusicItemTile({super.key, required this.item, required this.onTap, this.index});
+  /// See MusicGridTile's own onLongPress doc — same "play this now"
+  /// shortcut for items where onTap prefers browsing in.
+  final VoidCallback? onLongPress;
+
+  const MusicItemTile({
+    super.key,
+    required this.item,
+    required this.onTap,
+    this.index,
+    this.onLongPress,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -37,10 +47,14 @@ class MusicItemTile extends StatelessWidget {
           child: SizedBox(
             width: 44,
             height: 44,
+            // See music_grid_tile.dart's cacheWidth comment — same fix,
+            // capping decode to roughly this 44px display size instead of
+            // the source image's full resolution.
             child: resolvedUrl != null
                 ? Image.network(
                     resolvedUrl,
                     fit: BoxFit.cover,
+                    cacheWidth: (44 * MediaQuery.devicePixelRatioOf(context)).round(),
                     headers: {'Authorization': 'Bearer ${settings.accessToken ?? ''}'},
                     errorBuilder: (_, __, ___) => _fallbackIcon(tokens),
                   )
@@ -66,6 +80,7 @@ class MusicItemTile extends StatelessWidget {
             ? Text('${index! + 1}', style: TextStyle(color: tokens.textSecondary))
             : Icon(Icons.play_arrow, color: tokens.textSecondary),
         onTap: onTap,
+        onLongPress: onLongPress,
       ),
     );
   }

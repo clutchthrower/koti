@@ -170,7 +170,10 @@ class _KotiAppState extends State<KotiApp> with WidgetsBindingObserver {
       final deviceName = widget.settings.deviceName;
       final server = _sendspinServer;
       if (want && server == null) {
-        final newServer = SendspinServer(deviceName: deviceName);
+        final newServer = SendspinServer(
+          deviceName: deviceName,
+          clientId: widget.settings.deviceId,
+        );
         try {
           await newServer.start();
           _sendspinServer = newServer;

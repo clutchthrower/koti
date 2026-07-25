@@ -10,7 +10,7 @@ import '../../widgets/entity_watcher.dart';
 /// `unavailable`/`unknown` ones, since these are almost always stale
 /// leftovers (e.g. a second, orphaned entity_id left behind after an
 /// integration re-registered a device) rather than real alternate players.
-List<String> _availablePlayerIds(StateStore store) {
+List<String> availablePlayerIds(StateStore store) {
   final ids = store.all.entries
       .where((e) =>
           e.key.startsWith('media_player.') &&
@@ -45,7 +45,7 @@ List<String> _availablePlayerIds(StateStore store) {
 /// entity as a player either (it's not Music-Assistant-controllable), so
 /// that kind of duplicate needs resolving directly in HA (Settings →
 /// Devices & services → Entities → disable the one you don't want to see).
-Future<List<String>> _dedupedPlayerIds(StateStore store, List<String> candidateIds) async {
+Future<List<String>> dedupedPlayerIds(StateStore store, List<String> candidateIds) async {
   List<Map<String, dynamic>> registry;
   try {
     registry = await store.getEntityRegistry();
@@ -110,14 +110,14 @@ class _PlayersListState extends State<_PlayersList> {
   // registry itself doesn't change while this is on screen, and
   // recomputing on every entity-state tick would just redo the same work.
   late final Future<List<String>> _dedupedIds =
-      _dedupedPlayerIds(widget.store, _availablePlayerIds(widget.store));
+      dedupedPlayerIds(widget.store, availablePlayerIds(widget.store));
 
   @override
   Widget build(BuildContext context) {
     final tokens = KotiTheme.of(context);
     return FutureBuilder<List<String>>(
       future: _dedupedIds,
-      initialData: _availablePlayerIds(widget.store),
+      initialData: availablePlayerIds(widget.store),
       builder: (context, snapshot) {
         final ids = snapshot.data ?? const [];
         if (ids.isEmpty) {

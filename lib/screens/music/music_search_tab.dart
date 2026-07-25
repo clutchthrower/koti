@@ -2,7 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../theme/koti_theme.dart';
 import 'music_assistant_api.dart';
+import 'music_browse_stack.dart';
 import 'music_item_tile.dart';
+
+// Media types worth browsing INTO rather than instant-playing when tapped
+// from a search result — matches BrowseNode.mediaClass's real values (an
+// artist's own tracks/albums, a playlist's/album's own tracks).
+const _expandableTypes = {'artist', 'album', 'playlist'};
 
 class MusicSearchTab extends StatefulWidget {
   final String entityId;
@@ -21,6 +27,12 @@ class _MusicSearchTabState extends State<MusicSearchTab>
   bool _loading = false;
   String? _error;
 
+  // Non-null once the user taps an artist/album/playlist result — swaps
+  // the results list for a MusicBrowseStack rooted at that item, instead
+  // of the old behavior where tapping it just instant-played the whole
+  // thing with no way to see or pick individual tracks.
+  MusicItem? _browsing;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -36,6 +48,7 @@ class _MusicSearchTabState extends State<MusicSearchTab>
     setState(() {
       _loading = true;
       _error = null;
+      _browsing = null;
     });
     try {
       final results = await widget.api.search(query);
@@ -50,6 +63,14 @@ class _MusicSearchTabState extends State<MusicSearchTab>
         _error = '$e';
         _loading = false;
       });
+    }
+  }
+
+  void _onTapResult(MusicItem item) {
+    if (_expandableTypes.contains(item.mediaType)) {
+      setState(() => _browsing = item);
+    } else {
+      widget.api.playItem(widget.entityId, uri: item.uri, mediaType: item.mediaType);
     }
   }
 
@@ -102,21 +123,34 @@ class _MusicSearchTabState extends State<MusicSearchTab>
                 style: const TextStyle(color: Colors.redAccent)),
           ),
         Expanded(
-          child: _results == null
-              ? Center(
-                  child: Text('Search Music Assistant\'s library',
-                      style: TextStyle(color: tokens.textSecondary)))
-              : _results!.isEmpty
+          child: _browsing != null
+              ? MusicBrowseStack(
+                  key: ValueKey(_browsing!.uri),
+                  entityId: widget.entityId,
+                  api: widget.api,
+                  rootMediaContentType: _browsing!.mediaType,
+                  rootMediaContentId: _browsing!.uri,
+                  onExitRoot: () => setState(() => _browsing = null),
+                )
+              : _results == null
                   ? Center(
-                      child: Text('No results',
+                      child: Text('Search Music Assistant\'s library',
                           style: TextStyle(color: tokens.textSecondary)))
-                  : ListView.builder(
-                      itemCount: _results!.length,
-                      itemBuilder: (context, i) => MusicItemTile(
-                        item: _results![i],
-                        onTap: () => widget.api.playItem(widget.entityId, _results![i]),
-                      ),
-                    ),
+                  : _results!.isEmpty
+                      ? Center(
+                          child: Text('No results',
+                              style: TextStyle(color: tokens.textSecondary)))
+                      : ListView.builder(
+                          itemCount: _results!.length,
+                          itemBuilder: (context, i) => MusicItemTile(
+                            item: _results![i],
+                            onTap: () => _onTapResult(_results![i]),
+                            onLongPress: _expandableTypes.contains(_results![i].mediaType)
+                                ? () => widget.api.playItem(widget.entityId,
+                                    uri: _results![i].uri, mediaType: _results![i].mediaType)
+                                : null,
+                          ),
+                        ),
         ),
       ],
     );

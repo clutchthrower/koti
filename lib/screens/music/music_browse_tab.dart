@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
 
-import '../../theme/koti_theme.dart';
 import '../../widgets/glass_tab_strip.dart';
 import 'music_assistant_api.dart';
-import 'music_grid_tile.dart';
+import 'music_browse_stack.dart';
 
-const _mediaTypes = ['artist', 'album', 'playlist', 'radio', 'track'];
-const _mediaTypeLabels = {
-  'artist': 'Artists',
-  'album': 'Albums',
-  'playlist': 'Playlists',
-  'radio': 'Radio',
-  'track': 'Tracks',
-};
+// media_content_id values HA's music_assistant integration's root browse
+// listing uses for each library category (media_browser.py's LIBRARY_*
+// constants) — media_content_type just needs to be some non-null string
+// alongside it (HA's schema requires the pair together but the actual
+// routing only inspects media_content_id), so 'music_assistant' (the
+// integration's own domain) is used for all of them.
+const _categories = [
+  ('artists', 'Artists'),
+  ('albums', 'Albums'),
+  ('playlists', 'Playlists'),
+  ('radio', 'Radio'),
+  ('tracks', 'Tracks'),
+];
 
 class MusicBrowseTab extends StatefulWidget {
   final String entityId;
@@ -26,24 +30,13 @@ class MusicBrowseTab extends StatefulWidget {
 
 class _MusicBrowseTabState extends State<MusicBrowseTab>
     with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
-  late final TabController _typeController =
-      TabController(length: _mediaTypes.length, vsync: this)
-        ..addListener(() {
-          if (!_typeController.indexIsChanging) _load();
-        });
-
-  final Map<String, List<MusicItem>> _cache = {};
-  bool _loading = false;
-  String? _error;
+  late final TabController _typeController = TabController(length: _categories.length, vsync: this)
+    ..addListener(() {
+      if (!_typeController.indexIsChanging) setState(() {});
+    });
 
   @override
   bool get wantKeepAlive => true;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
 
   @override
   void dispose() {
@@ -51,35 +44,10 @@ class _MusicBrowseTabState extends State<MusicBrowseTab>
     super.dispose();
   }
 
-  String get _currentType => _mediaTypes[_typeController.index];
-
-  Future<void> _load() async {
-    if (_cache.containsKey(_currentType)) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final items = await widget.api.getLibrary(mediaType: _currentType);
-      if (!mounted) return;
-      setState(() {
-        _cache[_currentType] = items;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = '$e';
-        _loading = false;
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final tokens = KotiTheme.of(context);
-    final items = _cache[_currentType];
+    final (categoryId, _) = _categories[_typeController.index];
 
     return Column(
       children: [
@@ -87,40 +55,23 @@ class _MusicBrowseTabState extends State<MusicBrowseTab>
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: GlassTabStrip(
             controller: _typeController,
-            labels: [for (final t in _mediaTypes) _mediaTypeLabels[t]!],
+            labels: [for (final c in _categories) c.$2],
             scrollable: true,
           ),
         ),
         const SizedBox(height: 8),
-        if (_loading) const LinearProgressIndicator(minHeight: 2),
-        if (_error != null)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text('Couldn\'t load: $_error',
-                style: const TextStyle(color: Colors.redAccent)),
-          ),
         Expanded(
-          child: items == null || items.isEmpty
-              ? Center(
-                  child: Text(
-                    _loading ? 'Loading…' : 'Nothing here',
-                    style: TextStyle(color: tokens.textSecondary),
-                  ),
-                )
-              : GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 160,
-                    mainAxisSpacing: 16,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: 0.8,
-                  ),
-                  itemCount: items.length,
-                  itemBuilder: (context, i) => MusicGridTile(
-                    item: items[i],
-                    onTap: () => widget.api.playItem(widget.entityId, items[i]),
-                  ),
-                ),
+          // Keyed on the category so switching top tabs starts that
+          // category's own browsing session fresh at its root, rather
+          // than continuing wherever the previous category's drill-down
+          // happened to be.
+          child: MusicBrowseStack(
+            key: ValueKey(categoryId),
+            entityId: widget.entityId,
+            api: widget.api,
+            rootMediaContentType: 'music_assistant',
+            rootMediaContentId: categoryId,
+          ),
         ),
       ],
     );

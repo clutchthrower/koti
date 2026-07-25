@@ -1,8 +1,6 @@
 package com.koti.dashboard
 
 import android.Manifest
-import android.app.AlarmManager
-import android.app.PendingIntent
 import android.app.admin.DevicePolicyManager
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
@@ -220,6 +218,15 @@ class MainActivity : FlutterActivity() {
     private var sendspinAudioThread: Thread? = null
     private var sendspinAudioQueue: LinkedBlockingQueue<ByteArray>? = null
     private val sendspinStopSignal = ByteArray(0)
+    // A distinct sentinel from sendspinStopSignal, routed through the SAME
+    // queue as audio chunks rather than calling AudioTrack.pause/flush/play
+    // straight from the platform-channel thread — pause+flush racing
+    // against the writer thread's own in-flight track.write() call (on a
+    // DIFFERENT thread) could lose, leaving stale audio in the buffer even
+    // after a "flush". Routing through the queue makes the writer thread
+    // itself do the flush, right between chunks, with nothing else able to
+    // sneak a write in between.
+    private val sendspinFlushSignal = ByteArray(0)
 
     private fun startSendspinAudioSink(sampleRate: Int, channels: Int): String {
         stopSendspinAudioSink()
@@ -255,6 +262,15 @@ class MainActivity : FlutterActivity() {
             while (true) {
                 val chunk = queue.take()
                 if (chunk === sendspinStopSignal) break
+                if (chunk === sendspinFlushSignal) {
+                    try {
+                        track.pause()
+                        track.flush()
+                        track.play()
+                    } catch (_: Exception) {
+                    }
+                    continue
+                }
                 try {
                     track.write(chunk, 0, chunk.size)
                 } catch (_: Exception) {
@@ -272,8 +288,24 @@ class MainActivity : FlutterActivity() {
         sendspinAudioQueue?.put(bytes)
     }
 
+    // stream/clear (a track skip/seek — buffers should reset, but the
+    // stream itself keeps going, so the AudioTrack stays alive). Drops
+    // anything queued-but-not-yet-written, then has the writer thread
+    // itself discard whatever's already in the AudioTrack's own internal
+    // buffer (which keeps draining/playing after write() returns — that's
+    // what let the old track's tail audibly overlap the new one).
+    private fun flushSendspinAudioSink() {
+        sendspinAudioQueue?.let { queue ->
+            queue.clear()
+            queue.put(sendspinFlushSignal)
+        }
+    }
+
     private fun stopSendspinAudioSink() {
-        sendspinAudioQueue?.put(sendspinStopSignal)
+        sendspinAudioQueue?.let { queue ->
+            queue.clear()
+            queue.put(sendspinStopSignal)
+        }
         try {
             sendspinAudioThread?.join(500)
         } catch (_: InterruptedException) {
@@ -281,6 +313,8 @@ class MainActivity : FlutterActivity() {
         sendspinAudioThread = null
         sendspinAudioQueue = null
         try {
+            sendspinAudioTrack?.pause()
+            sendspinAudioTrack?.flush()
             sendspinAudioTrack?.stop()
             sendspinAudioTrack?.release()
         } catch (_: Exception) {
@@ -299,25 +333,37 @@ class MainActivity : FlutterActivity() {
         return mapOf("level" to level, "charging" to charging)
     }
 
-    // Schedules a relaunch via AlarmManager, then kills this process — the
-    // short delays give the HTTP response for this command (and this
-    // method-channel reply) time to actually flush before the process dies.
+    // Two prior approaches to this were tried and both confirmed (via live
+    // logcat inspection) to fail on this device:
+    //  1. startActivity() immediately, then killProcess() ~300ms later —
+    //     this app is single-process, so the freshly-started Activity
+    //     shares this same PID; the delayed kill tore down that
+    //     not-yet-rendered new instance right along with the old one.
+    //  2. Schedule the relaunch via AlarmManager+PendingIntent (surviving
+    //     independently of this process), kill this process immediately.
+    //     Logcat showed the alarm firing and attempting the launch, but
+    //     Android explicitly logged it as a rejected background activity
+    //     start: `isCallingUidForeground: false, isBgStartWhitelisted:
+    //     false` — by the time a system-delivered alarm fires, this app's
+    //     UID has no foreground/visible state left to justify it, and
+    //     Android 10 does enforce that (contrary to this comment's
+    //     earlier assumption that only 12+ enforces it strictly). No
+    //     task, no process, nothing — a fully silent drop.
+    //
+    // What actually works: start the new Activity instance directly, all
+    // in one synchronous call, while this process is STILL the visible
+    // foreground app (no alarm delay, no kill first) — Android has no
+    // reason to treat that as a background start at all, since it
+    // genuinely isn't one. FLAG_ACTIVITY_CLEAR_TASK finishes the old
+    // instance as the new one takes over, which is what actually resets
+    // app-level state (a fresh FlutterEngine/Dart isolate for the new
+    // instance) without needing a true OS process kill — onDestroy()
+    // (already below) tears down this instance's native BLE/mDNS/
+    // Sendspin-audio resources as part of that same transition.
     private fun restartApp() {
         val intent = packageManager.getLaunchIntentForPackage(packageName)
-        val pendingIntent = intent?.let {
-            PendingIntent.getActivity(
-                this, 0, it,
-                PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-        }
-        if (pendingIntent != null) {
-            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            alarmManager.set(AlarmManager.RTC, System.currentTimeMillis() + 500, pendingIntent)
-        }
-        Handler(mainLooper).postDelayed({
-            Process.killProcess(Process.myPid())
-            Runtime.getRuntime().exit(0)
-        }, 300)
+        intent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        if (intent != null) startActivity(intent)
     }
 
     // A normal Android app cannot reboot the device — android.permission.
@@ -446,6 +492,10 @@ class MainActivity : FlutterActivity() {
                     }
                     "stopSendspinAudioSink" -> {
                         stopSendspinAudioSink()
+                        result.success(null)
+                    }
+                    "flushSendspinAudioSink" -> {
+                        flushSendspinAudioSink()
                         result.success(null)
                     }
                     "startSendspinDiscovery" -> {

@@ -136,7 +136,8 @@ class _MusicQueueTabState extends State<MusicQueueTab>
               ),
               MusicItemTile(
                 item: queue.nextItem!,
-                onTap: () => widget.api.playItem(widget.entityId, queue.nextItem!),
+                onTap: () => widget.api.playItem(widget.entityId,
+                    uri: queue.nextItem!.uri, mediaType: queue.nextItem!.mediaType),
               ),
             ],
             if (queue.currentItem == null && queue.nextItem == null && !_loading)

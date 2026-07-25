@@ -1,16 +1,8 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
-import 'package:cryptography/cryptography.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:koti/sendspin/base64url.dart';
-import 'package:koti/sendspin/identity.dart';
-import 'package:koti/sendspin/noise/handshake_state.dart';
-import 'package:koti/sendspin/noise/primitives.dart';
-import 'package:koti/sendspin/noise/symmetric_state.dart';
-import 'package:koti/sendspin/noise/transport_cipher.dart';
 import 'package:koti/sendspin/sendspin_connection.dart';
 import 'package:koti/sendspin/sendspin_player.dart';
 import 'package:koti/sendspin/wire/binary_frame.dart';
@@ -18,93 +10,49 @@ import 'package:koti/sendspin/wire/envelope.dart';
 
 import 'test_event_pump.dart';
 
-/// Drives the Music Assistant side over a real loopback socket through
-/// activation (mirroring sendspin_connection_test.dart's fixture, kept as
-/// its own copy since each test file's fixture evolves for what it needs to
-/// exercise next), then continues into the steady state this test actually
-/// cares about: replying to one `client/time` with `server/time`, sending
-/// `stream/start` for a PCM format, and pushing one audio chunk.
+/// Drives the Music Assistant side over a real loopback socket through the
+/// plaintext `client/hello`/`server/hello` exchange (mirroring
+/// sendspin_connection_test.dart's fixture, kept as its own copy since each
+/// test file's fixture evolves for what it needs to exercise next), then
+/// continues into the steady state this test actually cares about: replying
+/// to one `client/time` with `server/time`, sending `stream/start` for a
+/// PCM format, and pushing one audio chunk.
 class _FakeMusicAssistantServer {
-  _FakeMusicAssistantServer(this._socket, this._serverStatic);
+  _FakeMusicAssistantServer(this._socket);
 
   final WebSocket _socket;
-  final SimpleKeyPair _serverStatic;
   late final _pump = TestEventPump(_socket);
-  TransportCipher? _sendCipher;
-  TransportCipher? _receiveCipher;
-  final _reassembler = FragmentReassembler();
 
   Future<void> _sendJson(SendspinEnvelope envelope) async {
-    final plaintext = <int>[0, ...utf8.encode(envelope.encode())];
-    _socket.add(await _sendCipher!.encrypt(plaintext));
+    _socket.add(envelope.encode());
   }
 
   Future<SendspinEnvelope> _receiveJson() async {
-    while (true) {
-      final raw = await _pump.nextBinary();
-      final plaintext = await _receiveCipher!.decrypt(Uint8List.fromList(raw));
-      final reassembled = _reassembler.feed(plaintext);
-      if (reassembled == null) continue;
-      final (type, data) = reassembled;
-      expect(type, BinaryMessageType.jsonBody);
-      return SendspinEnvelope.decode(utf8.decode(data));
-    }
+    final raw = await _pump.nextText();
+    return SendspinEnvelope.decode(raw);
   }
 
   Future<void> _sendAudioChunk(int timestampUs, Uint8List pcm) async {
     final frame = TimestampedFramePayload(timestampUs, pcm).encode();
-    final plaintext = <int>[BinaryMessageType.audioChunk, ...frame];
-    _socket.add(await _sendCipher!.encrypt(plaintext));
+    _socket.add(Uint8List.fromList([BinaryMessageType.audioChunk, ...frame]));
   }
 
-  /// Runs the handshake through activation, then the extra steady-state
-  /// exchange this test needs. Returns the `client/state` payloads
-  /// received, plus the `client/command` payload sent afterward (the
-  /// controller-role transport command the test triggers), for assertions.
+  /// Runs the connection through the hello exchange, then the extra
+  /// steady-state exchange this test needs. Returns the `client/state`
+  /// payloads received, plus the `client/command` payload sent afterward
+  /// (the controller-role transport command the test triggers), for
+  /// assertions.
   Future<(List<Map<String, dynamic>>, Map<String, dynamic>)> run() async {
-    final clientInitRaw = await _pump.nextText();
-    final clientInit = SendspinEnvelope.decode(clientInitRaw);
-    final clientId = base64UrlNoPadDecode(clientInit.payload['client_id'] as String);
+    final clientHelloRaw = await _pump.nextText();
+    final clientHello = SendspinEnvelope.decode(clientHelloRaw);
+    expect(clientHello.type, MessageType.clientHello);
 
-    final serverStaticPub = await extractPublicKeyBytes(_serverStatic);
-    final serverInitRaw = SendspinEnvelope(MessageType.serverInit, {
-      'server_id': base64UrlNoPad(serverStaticPub),
+    await _sendJson(SendspinEnvelope(MessageType.serverHello, {
+      'server_id': 'fake-ma-server',
+      'name': 'Fake MA',
       'version': 1,
-    }).encode();
-    _socket.add(serverInitRaw);
-
-    final prologue = Uint8List.fromList([
-      ...utf8.encode(clientInitRaw),
-      ...utf8.encode(serverInitRaw),
-    ]);
-
-    final psk = await sentinelPsk();
-    final handshake = _FakeInitiator(_serverStatic, clientId);
-    await handshake.initialize(prologue);
-
-    final pskIdBytes = await sha256Hash([...utf8.encode('sendspin-psk-id-v1'), ...psk]);
-    final message1 = await handshake.writeMessage1(
-      utf8.encode(jsonEncode({'psk_id': base64UrlNoPad(pskIdBytes)})),
-    );
-    _socket.add(SendspinEnvelope(MessageType.noiseHandshake, {
-      'data': base64UrlNoPad(message1),
-    }).encode());
-
-    final message2Raw = await _pump.nextText();
-    final message2Envelope = SendspinEnvelope.decode(message2Raw);
-    final message2Bytes = base64UrlNoPadDecode(message2Envelope.payload['data'] as String);
-    await handshake.readMessage2(message2Bytes, psk);
-
-    final (sendKey, receiveKey) = await handshake.split();
-    _sendCipher = TransportCipher(sendKey);
-    _receiveCipher = TransportCipher(receiveKey);
-
-    await _sendJson(const SendspinEnvelope(MessageType.serverHello, {'name': 'Fake MA'}));
-    await _receiveJson(); // client/hello
-
-    await _sendJson(SendspinEnvelope(MessageType.serverActivate, {
-      'activities': ['playback'],
-      'active_roles': ['player@v1'],
+      'active_roles': ['player@v1', 'controller@v1'],
+      'connection_reason': 'discovery',
     }));
 
     // Steady state: collect client/state, reply to client/time, then push
@@ -141,44 +89,6 @@ class _FakeMusicAssistantServer {
   }
 }
 
-class _FakeInitiator {
-  _FakeInitiator(this.localStatic, this.remoteStaticPublicKey);
-
-  final SimpleKeyPair localStatic;
-  final Uint8List remoteStaticPublicKey;
-  final _sym = SymmetricState();
-  SimpleKeyPair? _localEphemeral;
-
-  Future<void> initialize(List<int> prologue) async {
-    await _sym.initializeSymmetric(utf8.encode(KKpsk2ResponderHandshake.protocolName));
-    await _sym.mixHash(prologue);
-    await _sym.mixHash(await extractPublicKeyBytes(localStatic));
-    await _sym.mixHash(remoteStaticPublicKey);
-  }
-
-  Future<Uint8List> writeMessage1(List<int> payload) async {
-    final e = await newX25519KeyPair();
-    _localEphemeral = e;
-    final ePub = await extractPublicKeyBytes(e);
-    await _sym.mixHash(ePub);
-    await _sym.mixKey(await x25519SharedSecret(e, remoteStaticPublicKey));
-    await _sym.mixKey(await x25519SharedSecret(localStatic, remoteStaticPublicKey));
-    final ciphertext = await _sym.encryptAndHash(payload);
-    return Uint8List.fromList([...ePub, ...ciphertext]);
-  }
-
-  Future<Uint8List> readMessage2(Uint8List message, Uint8List psk) async {
-    final remoteEphemeral = message.sublist(0, 32);
-    await _sym.mixHash(remoteEphemeral);
-    await _sym.mixKey(await x25519SharedSecret(_localEphemeral!, remoteEphemeral));
-    await _sym.mixKey(await x25519SharedSecret(localStatic, remoteEphemeral));
-    await _sym.mixKeyAndHash(psk);
-    return _sym.decryptAndHash(message.sublist(32));
-  }
-
-  Future<(Uint8List, Uint8List)> split() => _sym.split();
-}
-
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -197,17 +107,18 @@ void main() {
     });
 
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    final serverStatic = await newX25519KeyPair();
     late Future<(List<Map<String, dynamic>>, Map<String, dynamic>)> fakeServerResult;
     server.listen((request) async {
       final socket = await WebSocketTransformer.upgrade(request);
-      fakeServerResult = _FakeMusicAssistantServer(socket, serverStatic).run();
+      fakeServerResult = _FakeMusicAssistantServer(socket).run();
     });
 
-    final clientStatic = await newX25519KeyPair();
-    final identity = await SendspinIdentity.forTesting(clientStatic);
     final clientSocket = await WebSocket.connect('ws://127.0.0.1:${server.port}/sendspin');
-    final connection = SendspinConnection(clientSocket, identity, deviceName: 'Test Tablet');
+    final connection = SendspinConnection(
+      clientSocket,
+      clientId: 'test-device-id-1234',
+      deviceName: 'Test Tablet',
+    );
     await connection.handshakeAndActivate();
 
     final player = SendspinPlayer(connection);
@@ -217,6 +128,7 @@ void main() {
     unawaited(player.controllerPlay());
 
     final (clientStates, controllerCommand) = await fakeServerResult;
+    expect(clientStates.single['state'], 'synchronized');
     expect(clientStates.single['player']['volume'], 100);
     expect(clientStates.single['player']['muted'], false);
     expect(controllerCommand['controller'], {'command': 'play'});

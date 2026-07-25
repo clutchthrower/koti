@@ -31,21 +31,23 @@ void main() {
     await tester.pump(); // ticker baseline frame
 
     // Mid house-draw: painting must not throw.
-    await _advance(tester, const Duration(milliseconds: 900));
+    await _advance(tester, const Duration(milliseconds: 1800));
 
-    // Past the intro (1500ms) and into the redraw loop.
-    await _advance(tester, const Duration(milliseconds: 800));
+    // Past the intro (3200ms) and into the redraw loop.
+    await _advance(tester, const Duration(milliseconds: 1600));
     expect(find.text('Connecting to Home Assistant…'), findsOneWidget);
 
-    // Several loop cycles (1400ms each) while still not ready: never
+    // Several loop cycles (3200ms each) while still not ready: never
     // finishes, keeps looping without throwing.
-    await _advance(tester, const Duration(milliseconds: 2900));
+    await _advance(tester, const Duration(milliseconds: 6500));
     expect(finished, isFalse);
 
     // Becomes ready mid-loop: must wait for the next hold window rather
     // than cutting the redraw off mid-erase, then finish shortly after.
+    // A generous multi-cycle advance guarantees crossing a hold window
+    // regardless of exactly where in the current cycle this lands.
     await tester.pumpWidget(harness(true, () => finished = true));
-    await _advance(tester, const Duration(milliseconds: 1900));
+    await _advance(tester, const Duration(milliseconds: 6500));
     expect(finished, isTrue);
   });
 
@@ -56,16 +58,16 @@ void main() {
     await tester.pumpWidget(harness(true, () => finished = true));
     await tester.pump();
 
-    // Past the intro (1500ms) and partway into the loop: must not finish
-    // yet — at least one full loop (1400ms) is mandatory even though the
+    // Past the intro (3200ms) and partway into the loop: must not finish
+    // yet — at least one full loop (3200ms) is mandatory even though the
     // app was already ready, so a fast connection doesn't flash the
-    // splash for ~1.5s with no loop at all.
-    await _advance(tester, const Duration(milliseconds: 1900));
+    // splash with no loop at all.
+    await _advance(tester, const Duration(milliseconds: 4000));
     expect(finished, isFalse);
 
     // Well past one full loop cycle and into the second cycle's hold
     // window: now it's allowed to finish.
-    await _advance(tester, const Duration(milliseconds: 2600));
+    await _advance(tester, const Duration(milliseconds: 5000));
     expect(finished, isTrue);
   });
 

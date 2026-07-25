@@ -82,17 +82,53 @@ class MusicAssistantApi {
     return MusicQueueInfo.fromJson(response);
   }
 
-  Future<void> playItem(String entityId, MusicItem item, {String enqueue = 'play'}) {
+  /// [mediaType] should be omitted for a URI resolved via [browseMedia] —
+  /// its BrowseMedia node's own `media_content_type` is always the generic
+  /// constant `"music"` (confirmed against HA's actual music_assistant
+  /// integration source, media_browser.py's `build_item`), not the real
+  /// track/album/artist type, so passing it through would mislabel
+  /// everything; Music Assistant infers the real type from the URI itself
+  /// when this is left out. [radioMode] mirrors the "radio"/"autoplay"
+  /// feature real streaming apps have: once this selection finishes, MA
+  /// keeps the queue going with similar recommended tracks instead of
+  /// just stopping — the service call's actual name for it, confirmed
+  /// against the integration's schema (services.py's `ATTR_RADIO_MODE`).
+  Future<void> playItem(
+    String entityId, {
+    required String uri,
+    String? mediaType,
+    String enqueue = 'play',
+    bool radioMode = true,
+  }) {
     return store.callService(
       'music_assistant',
       'play_media',
       entityId: entityId,
       data: {
-        'media_id': [item.uri],
-        'media_type': item.mediaType,
+        'media_id': [uri],
+        if (mediaType != null) 'media_type': mediaType,
         'enqueue': enqueue,
+        'radio_mode': radioMode,
       },
     );
+  }
+
+  /// Hierarchical browse (artist -> their albums, album/playlist -> their
+  /// tracks) via HA's standard `media_player/browse_media` — what lets
+  /// tapping an artist/playlist actually show its contents instead of just
+  /// instant-playing it. Omit both params for the root listing (Artists/
+  /// Albums/Playlists/Radio/Tracks folders).
+  Future<BrowseNode> browseMedia(
+    String entityId, {
+    String? mediaContentType,
+    String? mediaContentId,
+  }) async {
+    final response = await store.browseMedia(
+      entityId,
+      mediaContentType: mediaContentType,
+      mediaContentId: mediaContentId,
+    );
+    return BrowseNode.fromJson(response);
   }
 
   /// Groups [members] under [leaderEntityId] using HA's standard
@@ -173,6 +209,57 @@ class MusicAssistantApi {
   }
 }
 
+/// One node from HA's `media_player/browse_media` (a `BrowseMedia`
+/// dataclass, HA-core's standard hierarchical media browsing shape) —
+/// either a folder (`canExpand`, e.g. an artist or the "Playlists" root)
+/// or a playable leaf (`canPlay`, e.g. a track), and sometimes both (a
+/// playlist/album can be opened to see its tracks, or played as a whole).
+class BrowseNode {
+  final String title;
+  // The REAL semantic type (artist/album/playlist/track/directory, ...) —
+  // unlike mediaContentType, which HA's music_assistant integration sets
+  // to the generic constant "music" for every leaf item (confirmed
+  // against its actual source, media_browser.py's `build_item`), this is
+  // what MusicGridTile/MusicItemTile need for icon/shape selection.
+  final String mediaClass;
+  final String mediaContentType;
+  final String mediaContentId;
+  final bool canPlay;
+  final bool canExpand;
+  final String? thumbnail;
+  final List<BrowseNode> children;
+
+  const BrowseNode({
+    required this.title,
+    required this.mediaClass,
+    required this.mediaContentType,
+    required this.mediaContentId,
+    required this.canPlay,
+    required this.canExpand,
+    this.thumbnail,
+    this.children = const [],
+  });
+
+  factory BrowseNode.fromJson(Map<String, dynamic> json) {
+    final childrenJson = json['children'];
+    return BrowseNode(
+      title: json['title'] as String? ?? '',
+      mediaClass: json['media_class'] as String? ?? '',
+      mediaContentType: json['media_content_type'] as String? ?? '',
+      mediaContentId: json['media_content_id'] as String? ?? '',
+      canPlay: json['can_play'] as bool? ?? false,
+      canExpand: json['can_expand'] as bool? ?? false,
+      thumbnail: json['thumbnail'] as String?,
+      children: childrenJson is List
+          ? childrenJson
+              .whereType<Map>()
+              .map((m) => BrowseNode.fromJson(m.cast<String, dynamic>()))
+              .toList()
+          : const [],
+    );
+  }
+}
+
 /// A track/album/artist/playlist/radio station, matching MA's
 /// MEDIA_ITEM_SCHEMA (uri/name/image are always present; artists/album
 /// are only on tracks and albums).
@@ -190,6 +277,18 @@ class MusicItem {
     this.subtitle,
     this.imageUrl,
   });
+
+  /// Adapts a browse_media [BrowseNode] so it can render through the same
+  /// [MusicGridTile]/[MusicItemTile] widgets flat search/library results
+  /// use — [BrowseNode] has no separate subtitle field (its title already
+  /// embeds "Artist - Track" for tracks, per HA's own formatting), so
+  /// [subtitle] is left null here rather than guessing at a split.
+  factory MusicItem.fromBrowseNode(BrowseNode node) => MusicItem(
+        uri: node.mediaContentId,
+        name: node.title,
+        mediaType: node.mediaClass,
+        imageUrl: node.thumbnail,
+      );
 
   factory MusicItem.fromJson(Map<String, dynamic> json, String mediaType) {
     final artists = json['artists'];

@@ -71,7 +71,7 @@ class KotiHaServer {
 
   Future<void> start() async {
     if (running) return;
-    final server = await HttpServer.bind(InternetAddress.anyIPv4, port);
+    final server = await _bindWithRetry();
     _server = server;
     server.listen(
       (request) => _handle(request).catchError((_) {
@@ -101,6 +101,21 @@ class KotiHaServer {
     try {
       await _channel.invokeMethod('stopKotiDiscovery');
     } catch (_) {}
+  }
+
+  /// See sendspin_server.dart's identical helper — "restart app" swaps in
+  /// a fresh Activity/FlutterEngine without a true OS process kill, so
+  /// this port can still be briefly held by the outgoing instance's own
+  /// socket when this one starts trying to bind it.
+  Future<HttpServer> _bindWithRetry() async {
+    for (var attempt = 1; ; attempt++) {
+      try {
+        return await HttpServer.bind(InternetAddress.anyIPv4, port);
+      } on SocketException {
+        if (attempt >= 5) rethrow;
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+      }
+    }
   }
 
   /// Re-announces under the new name without a full stop/start — used
