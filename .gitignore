@@ -66,3 +66,4 @@ app.*.map.json
 /.claude/
 CLAUDE.md
 SPECIFICATIONS.md
+devtools_options.yaml
