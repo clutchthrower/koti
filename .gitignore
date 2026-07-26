@@ -64,3 +64,5 @@ app.*.map.json
 
 # Local assistant/tooling state
 /.claude/
+CLAUDE.md
+SPECIFICATIONS.md

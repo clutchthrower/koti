@@ -85,11 +85,39 @@ class _MusicBrowseStackState extends State<MusicBrowseStack> {
       _error = null;
     });
     try {
-      final child = await widget.api.browseMedia(
+      var child = await widget.api.browseMedia(
         widget.entityId,
         mediaContentType: node.mediaContentType,
         mediaContentId: node.mediaContentId,
       );
+      // HA's browse_media only ever shows an artist's ALBUMS (media_
+      // browser.py's build_artist_items_listing calls MA's
+      // get_artist_albums, nothing else) — an artist whose library
+      // presence is only individual tracks with no album metadata ever
+      // synced (common for a personal/downloaded collection, confirmed
+      // live: no MA-side errors, get_artist_albums just legitimately
+      // returns empty) looks entirely empty even though the user has
+      // plenty of their tracks. Fall back to a search scoped to this
+      // artist's own tracks so there's still something to show/play.
+      if (child.mediaClass == 'artist' && child.children.isEmpty) {
+        final tracks = await widget.api.search(
+          child.title,
+          searchArtist: child.title,
+          mediaTypes: const ['track'],
+        );
+        if (tracks.isNotEmpty) {
+          child = BrowseNode(
+            title: child.title,
+            mediaClass: child.mediaClass,
+            mediaContentType: child.mediaContentType,
+            mediaContentId: child.mediaContentId,
+            canPlay: child.canPlay,
+            canExpand: child.canExpand,
+            thumbnail: child.thumbnail,
+            children: tracks.map(BrowseNode.fromMusicItem).toList(),
+          );
+        }
+      }
       if (!mounted) return;
       setState(() {
         _stack.add(child);

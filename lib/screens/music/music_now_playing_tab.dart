@@ -302,7 +302,24 @@ class _MusicNowPlayingTabState extends State<MusicNowPlayingTab> {
                   children: [
                     TextButton(
                       onPressed: () {
-                        widget.api.unjoin(widget.entityId);
+                        // Ungrouping THIS entity directly (unjoin) is only
+                        // safe when it's a follower. If it's currently the
+                        // sync leader (confirmed against Music Assistant's
+                        // own server source, controllers/players/
+                        // controller.py's cmd_ungroup: ungrouping a leader
+                        // removes ALL its followers, not just itself),
+                        // that would kill the group for everyone else
+                        // instead of just dropping this one player — so
+                        // reassign leadership to another remaining member
+                        // first when there is one, and only unjoin
+                        // outright when this is the last/only member.
+                        final remaining =
+                            currentGroup.where((id) => id != widget.entityId).toList();
+                        if (remaining.isNotEmpty) {
+                          widget.api.join(remaining.first, remaining.skip(1).toList());
+                        } else {
+                          widget.api.unjoin(widget.entityId);
+                        }
                         Navigator.of(context).pop();
                       },
                       child: const Text('Ungroup'),

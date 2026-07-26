@@ -32,8 +32,16 @@ class MusicAssistantApi {
 
   /// Searches MA's library (and, per MA's default, unresolved/online
   /// sources too). Not player-specific — results are picked, then played
-  /// on whichever player the user has selected.
-  Future<List<MusicItem>> search(String query, {int limit = 25}) async {
+  /// on whichever player the user has selected. [searchArtist] scopes
+  /// results to a specific artist (matches the service's own optional
+  /// `artist` field) — used as a fallback for artists whose browse page
+  /// comes back empty (see MusicBrowseStack).
+  Future<List<MusicItem>> search(
+    String query, {
+    int limit = 25,
+    String? searchArtist,
+    List<String>? mediaTypes,
+  }) async {
     final configEntryId = await _requireConfigEntryId();
     final response = await store.callServiceForResponse(
       'music_assistant',
@@ -42,6 +50,8 @@ class MusicAssistantApi {
         'config_entry_id': configEntryId,
         'name': query,
         'limit': limit,
+        if (searchArtist != null) 'artist': searchArtist,
+        if (mediaTypes != null) 'media_type': mediaTypes,
       },
     );
     return _parseResultBuckets(response);
@@ -258,6 +268,19 @@ class BrowseNode {
           : const [],
     );
   }
+
+  /// Inverse of [MusicItem.fromBrowseNode] — wraps a flat search/library
+  /// result (e.g. a track found via a fallback artist search) as a leaf
+  /// node so it can sit in a [BrowseNode]'s own children list.
+  factory BrowseNode.fromMusicItem(MusicItem item) => BrowseNode(
+        title: item.name,
+        mediaClass: item.mediaType,
+        mediaContentType: item.mediaType,
+        mediaContentId: item.uri,
+        canPlay: true,
+        canExpand: false,
+        thumbnail: item.imageUrl,
+      );
 }
 
 /// A track/album/artist/playlist/radio station, matching MA's

@@ -1,8 +1,8 @@
 # Third-Party Assets
 
 The bundled icon set (`assets/icons/`), weather icon set (`assets/weather/`),
-Hanken Grotesk font (`assets/fonts/`), and demo room/mobile background images
-(`assets/rooms/`, `assets/mobile/`) are sourced from the
+Hanken Grotesk font (`assets/fonts/`), and demo mobile background images
+(`assets/mobile/`) are sourced from the
 [willsanderson/Hemma](https://github.com/willsanderson/Hemma) Home Assistant
 dashboard, licensed under the MIT License:
 

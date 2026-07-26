@@ -49,7 +49,16 @@ class SendspinPlayer {
   // Generous relative to what a single-hop LAN stream actually needs.
   static const _requiredLeadTimeMs = 200;
   static const _minBufferMs = 400;
-  static const _staticDelayMs = 0;
+
+  // This device's own fixed output latency (write() call to actually
+  // audible), MEASURED via AudioTrack.getTimestamp() rather than declared
+  // as a fixed guess — see _measureAndReportStaticDelay. Reporting an
+  // accurate value here is what lets the server schedule this client's
+  // audio far enough ahead to land in sync with other group members;
+  // this used to always be a flat 0, which is almost certainly a real
+  // contributor to reported multi-second group-sync drift.
+  int _staticDelayMs = 0;
+  Timer? _latencyMeasureTimer;
 
   Future<void> start() async {
     _messagesSub = _connection.messages.listen(_handleMessage);
@@ -185,12 +194,41 @@ class SendspinPlayer {
       'channels': player['channels'] ?? 2,
     });
     _sinkStarted = true;
+    _scheduleLatencyMeasurement();
   }
 
   Future<void> _stopSink() async {
     if (!_sinkStarted) return;
     _sinkStarted = false;
+    _latencyMeasureTimer?.cancel();
     await _channel.invokeMethod('stopSendspinAudioSink');
+  }
+
+  /// First measurement is delayed slightly — AudioTrack.getTimestamp()
+  /// reports nothing valid until the HAL has actually consumed some
+  /// audio, so measuring immediately after starting the sink would just
+  /// see "no timestamp yet". Re-measures periodically after that: the
+  /// value is expected to be fairly stable (it's this device's own fixed
+  /// hardware/buffer latency) but can shift slightly, e.g. after a buffer
+  /// underrun and refill.
+  void _scheduleLatencyMeasurement() {
+    _latencyMeasureTimer?.cancel();
+    _latencyMeasureTimer = Timer(const Duration(milliseconds: 500), () {
+      unawaited(_measureAndReportStaticDelay());
+      _latencyMeasureTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+        unawaited(_measureAndReportStaticDelay());
+      });
+    });
+  }
+
+  Future<void> _measureAndReportStaticDelay() async {
+    if (!_sinkStarted) return;
+    final latencyUs = await _channel.invokeMethod<int>('getSendspinOutputLatencyUs');
+    if (latencyUs == null || latencyUs <= 0) return; // no valid HAL timestamp yet
+    final delayMs = (latencyUs / 1000).round();
+    if (delayMs == _staticDelayMs) return; // no meaningful change
+    _staticDelayMs = delayMs;
+    await _sendClientState();
   }
 
   Future<void> _flushSink() async {
@@ -221,17 +259,27 @@ class SendspinPlayer {
   Future<void> _handleBinaryMessage(SendspinBinaryMessage message) async {
     if (message.type != BinaryMessageType.audioChunk || !_sinkStarted) return;
     final generation = _streamGeneration;
-    if (_timeFilter.isSynchronized) {
+    if (_timeFilter.isReadyForPrecisionScheduling) {
       final deadlineUs = _timeFilter.computeClientTime(message.payload.timestampUs);
       final delayUs = deadlineUs - _nowUs;
       if (delayUs > 0) {
         await Future<void>.delayed(Duration(microseconds: delayUs));
       }
     }
-    // Not yet synchronized: write immediately rather than dropping audio —
-    // sync converges within the first few round trips in practice, and
-    // AudioTrack's own buffer absorbs the resulting jitter until it does.
+    // Not yet converged enough to trust precise scheduling: write
+    // immediately rather than dropping audio or (worse) delaying against
+    // a still-noisy estimate — sync converges within the first several
+    // round trips in practice, and AudioTrack's own buffer absorbs the
+    // resulting jitter until it does.
     if (generation != _streamGeneration) return; // superseded mid-delay — belongs to a track that's since been cleared/replaced
+    // _muted was previously only ever recorded and echoed back in
+    // client/state — nothing actually silenced playback when Music
+    // Assistant's own volume_mute reached this client via server/command,
+    // confirmed live (is_volume_muted flipped true on the mirrored HA
+    // entity, audio kept playing at full volume regardless). Checked at
+    // write-time (not capture-time) so a mute toggled mid-delay still
+    // takes effect for this chunk.
+    if (_muted) return;
     await _channel.invokeMethod('writeSendspinPcmChunk', {
       'bytes': message.payload.payload,
     });

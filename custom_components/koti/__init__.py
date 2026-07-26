@@ -32,7 +32,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = KotiCoordinator(
         hass, host=entry.data["host"], port=entry.data["port"]
     )
-    await coordinator.async_config_entry_first_refresh()
+    # Best-effort, not async_config_entry_first_refresh() — that raises
+    # ConfigEntryNotReady on a failed first poll, which skips
+    # async_forward_entry_setups() below entirely, leaving the entry with
+    # zero entities (not even unavailable ones) until a later automatic
+    # retry happens to land after the tablet's actually reachable. This
+    # tablet is a phone-class Android device that can take 15+ seconds to
+    # cold-boot its REST server — a real, observed race right after a
+    # fresh install+onboard, not a hypothetical. Entities get created
+    # regardless and just report unavailable (CoordinatorEntity.available
+    # already handles that) until the first successful poll.
+    await coordinator.async_refresh()
 
     reported_id = coordinator.data.get("deviceID") if coordinator.data else None
     if reported_id:

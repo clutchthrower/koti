@@ -1,4 +1,4 @@
-# Project Context: Koti (Ultra-Low RAM Dashboard App, formerly "Hemma Native")
+# Project Context: Koti (Ultra-Low RAM Dashboard App)
 
 ## Overview
 This project converts the visual identity and minimalist layout of the [willsanderson/Hemma](https://github.com) Home Assistant dashboard into a highly optimized, compiled native Android application. 
@@ -45,12 +45,11 @@ When generating code, modifying configurations, or designing interfaces via `cla
 1. Ensure all code compiles cleanly within **Dart and Flutter SDK constraints targeting API Level 24**.
 2. Avoid external dependencies or massive UI library packages; maximize vanilla Flutter widgets to keep the compiled binary footprint under 30MB.
 3. Include robust, silent auto-reconnection logic for the WebSocket stream to handle dropped Wi-Fi signals elegantly without crashing the app framework.
-4. Provide absolute, clear terminal execution guidelines to the user, who is a non-developer working inside an Ubuntu 24.04 command-line tool window.
+4. Provide absolute, clear terminal execution guidelines to the user, who is working inside an Ubuntu 24.04 command-line tool window.
 
 ## Future Feature Ideas
 Things I'd like to add to the app later on:
 1. Voice Satellite, wake word detection, Local AI
-2. Integration with Music Assistant as speaker and/or controller
 
 # More in-depth breakdown
 Check the local file 'SPECIFICATIONS.md' for more in-depth details for the project

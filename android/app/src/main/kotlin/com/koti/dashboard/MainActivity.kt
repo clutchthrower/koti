@@ -14,6 +14,7 @@ import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
+import android.media.AudioTimestamp
 import android.media.AudioTrack
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
@@ -30,6 +31,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.atomic.AtomicLong
 
 class MainActivity : FlutterActivity() {
     private var bleSink: EventChannel.EventSink? = null
@@ -228,6 +230,18 @@ class MainActivity : FlutterActivity() {
     // sneak a write in between.
     private val sendspinFlushSignal = ByteArray(0)
 
+    // Bytes per interleaved audio frame (channels * 2 for 16-bit PCM) and a
+    // running count of frames actually handed to track.write() — read
+    // together with AudioTrack.getTimestamp()'s reported framePosition (how
+    // many frames have actually reached the DAC) to MEASURE this device's
+    // real output latency, instead of declaring a fixed guessed constant.
+    // getTimestamp() has been a stable plain-Java AudioTrack API since API
+    // 19 — no native code/Oboe needed, and it works fine on this app's API
+    // 24 baseline (unlike AAudio's more precise equivalent, which needs
+    // API 26+).
+    private var sendspinBytesPerFrame = 4
+    private val sendspinTotalFramesWritten = AtomicLong(0)
+
     private fun startSendspinAudioSink(sampleRate: Int, channels: Int): String {
         stopSendspinAudioSink()
         val channelMask =
@@ -235,6 +249,8 @@ class MainActivity : FlutterActivity() {
         val minBufferSize =
             AudioTrack.getMinBufferSize(sampleRate, channelMask, AudioFormat.ENCODING_PCM_16BIT)
         if (minBufferSize <= 0) return "error"
+        sendspinBytesPerFrame = (if (channels >= 2) 2 else 1) * 2
+        sendspinTotalFramesWritten.set(0)
 
         val track = AudioTrack.Builder()
             .setAudioAttributes(
@@ -273,6 +289,7 @@ class MainActivity : FlutterActivity() {
                 }
                 try {
                     track.write(chunk, 0, chunk.size)
+                    sendspinTotalFramesWritten.addAndGet((chunk.size / sendspinBytesPerFrame).toLong())
                 } catch (_: Exception) {
                     break
                 }
@@ -286,6 +303,27 @@ class MainActivity : FlutterActivity() {
 
     private fun writeSendspinPcmChunk(bytes: ByteArray) {
         sendspinAudioQueue?.put(bytes)
+    }
+
+    // The gap between "we called write() for frame N" and "frame N is
+    // actually audible" — bufferedFrames (written but not yet reported as
+    // played by the HAL) expressed as a duration. Not reset across a
+    // flush: getTimestamp()'s framePosition only ever advances (frames
+    // actually consumed), it doesn't rewind when queued-but-unplayed data
+    // is discarded, so sendspinTotalFramesWritten must track the same
+    // absolute counter to stay comparable — only a fresh
+    // startSendspinAudioSink() (a new AudioTrack) resets either. Returns 0
+    // before the HAL has reported a first valid timestamp (right after
+    // starting) rather than a made-up value.
+    private fun getSendspinOutputLatencyUs(): Long {
+        val track = sendspinAudioTrack ?: return 0L
+        val timestamp = AudioTimestamp()
+        if (!track.getTimestamp(timestamp)) return 0L
+        val sampleRate = track.sampleRate
+        if (sampleRate <= 0) return 0L
+        val bufferedFrames = sendspinTotalFramesWritten.get() - timestamp.framePosition
+        if (bufferedFrames <= 0) return 0L
+        return bufferedFrames * 1_000_000L / sampleRate
     }
 
     // stream/clear (a track skip/seek — buffers should reset, but the
@@ -497,6 +535,9 @@ class MainActivity : FlutterActivity() {
                     "flushSendspinAudioSink" -> {
                         flushSendspinAudioSink()
                         result.success(null)
+                    }
+                    "getSendspinOutputLatencyUs" -> {
+                        result.success(getSendspinOutputLatencyUs())
                     }
                     "startSendspinDiscovery" -> {
                         result.success(

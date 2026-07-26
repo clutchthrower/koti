@@ -38,6 +38,19 @@ class SendspinTimeFilter {
   double get errorUs =>
       _offsetCovariance.isFinite ? math.sqrt(_offsetCovariance.abs()) : double.infinity;
 
+  /// Stricter than [isSynchronized] — that one matches aiosendspin's own
+  /// spec-defined threshold (just 2 samples) and shouldn't change, but 2
+  /// samples is a very thin basis for actually trusting this filter's
+  /// offset/drift enough to SCHEDULE audio precisely against it, rather
+  /// than just writing chunks as they arrive. Modeled on a second,
+  /// independent Sendspin client's own equivalent gate
+  /// (massdroid_native's ClockSynchronizer.isReadyForPlaybackStart: count
+  /// >= 8, error <= 5ms) — right when a tablet joins an already-playing
+  /// group is exactly when the filter is freshest and least converged,
+  /// so committing to precise scheduling that early is a plausible
+  /// contributor to reported multi-second group-sync drift.
+  bool get isReadyForPrecisionScheduling => _count >= 8 && errorUs <= 5000;
+
   /// Feeds one round trip: `t0`=`client_transmitted` (this client's own
   /// send time), `t1`=`server_received`, `t2`=`server_transmitted` (both
   /// from the `server/time` reply), `t3`=this client's local receive time
@@ -56,7 +69,20 @@ class SendspinTimeFilter {
 
     if (_offset == null) {
       _offset = measurement;
-      _offsetCovariance = (maxError * 0.5) * (maxError * 0.5);
+      // maxError already has _maxErrorScale applied once by update() (the
+      // caller) — matching aiosendspin's own SendspinTimeFilter, which
+      // computes measurement_variance = (max_error * MAX_ERROR_SCALE)^2
+      // identically for every sample. This branch previously applied an
+      // extra, erroneous *0.5 on top, making the very first covariance
+      // seed 4x too small (overconfident) relative to every later
+      // sample's plain maxError^2 — confirmed against both the actual
+      // aiosendspin source and a second independent Kotlin port
+      // (massdroid_native's ClockSynchronizer). An overconfident first
+      // seed propagates into the drift-covariance calculation on sample 2
+      // and from there into the Kalman gains for a while, a real
+      // mechanism for a slow-to-correct offset bias — plausibly
+      // contributing to the reported multi-second group-sync drift.
+      _offsetCovariance = maxError * maxError;
       _lastUpdateUs = timeUs;
       _count = 1;
       return;

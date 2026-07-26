@@ -39,6 +39,19 @@ void main() {
     );
   });
 
+  test('first sample\'s error matches maxError, not a quarter of it', () {
+    // t0=0 (client sent), t3=2000 (client received) -> round trip 2000us;
+    // t1=t2=1000 (instant server processing) -> delay = ((t3-t0)-(t2-t1))/2
+    // = 1000us, so maxError passed into the filter = 1000 * MAX_ERROR_SCALE
+    // (0.5) = 500. The first sample's covariance seed should be
+    // maxError^2 == 500^2, matching every later sample's plain
+    // maxError*maxError — not (maxError*0.5)^2, a since-fixed regression
+    // that made the very first seed 4x too confident.
+    final filter = SendspinTimeFilter();
+    filter.update(0, 1000, 1000, 2000);
+    expect(filter.errorUs, closeTo(500, 0.001));
+  });
+
   test('is not synchronized before at least two samples', () {
     final filter = SendspinTimeFilter();
     expect(filter.isSynchronized, isFalse);

@@ -40,6 +40,7 @@ SUPPORTED_FEATURES = (
     | MediaPlayerEntityFeature.PLAY
     | MediaPlayerEntityFeature.SEEK
     | MediaPlayerEntityFeature.VOLUME_SET
+    | MediaPlayerEntityFeature.VOLUME_MUTE
     | MediaPlayerEntityFeature.NEXT_TRACK
     | MediaPlayerEntityFeature.PREVIOUS_TRACK
 )
@@ -107,6 +108,10 @@ class KotiMediaPlayer(CoordinatorEntity[KotiCoordinator], MediaPlayerEntity):
         # why this entity can't derive play/pause/track state on its own.
         self._sendspin_entity_id: str | None = None
         self._unsub_sendspin_listener: Callable[[], None] | None = None
+        # The tablet's volume is just a physical STREAM_MUSIC level (see
+        # setAudioVolume/MainActivity.kt) — there's no separate hardware
+        # mute, so this remembers what to restore to on unmute.
+        self._pre_mute_volume: float | None = None
         self._update_from_coordinator()
 
     async def async_added_to_hass(self) -> None:
@@ -269,3 +274,18 @@ class KotiMediaPlayer(CoordinatorEntity[KotiCoordinator], MediaPlayerEntity):
     async def async_set_volume_level(self, volume: float) -> None:
         await self.coordinator.send_command("setAudioVolume", level=round(volume * 100), stream=4)
         await self.coordinator.async_request_refresh()
+
+    async def async_mute_volume(self, mute: bool) -> None:
+        """No discrete mute at the protocol/hardware level — implemented as
+        remember-and-zero, restore-on-unmute against the same physical
+        volume async_set_volume_level already controls. Applies regardless
+        of whether Sendspin's connected, since it's the same underlying
+        STREAM_MUSIC level either way, not a per-source software mute.
+        """
+        if mute:
+            self._pre_mute_volume = self.volume_level
+            await self.async_set_volume_level(0)
+        else:
+            await self.async_set_volume_level(self._pre_mute_volume or 0.5)
+        self._attr_is_volume_muted = mute
+        self.async_write_ha_state()
