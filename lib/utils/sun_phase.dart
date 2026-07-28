@@ -17,18 +17,11 @@ String computeDynamicBackgroundFile({
   required bool belowHorizon,
 }) {
   final phase = computeSunPhase(elevation: elevation, rising: rising);
-  String bucket;
-  switch (phase) {
-    case SunPhase.morning:
-    case SunPhase.dawn:
-      bucket = 'morning';
-      break;
-    case SunPhase.sunset:
-      bucket = 'night';
-      break;
-    default:
-      bucket = 'day';
-  }
+  final bucket = switch (phase) {
+    SunPhase.morning || SunPhase.dawn => 'morning',
+    SunPhase.sunset => 'night',
+    _ => 'day',
+  };
   final darkSuffix = belowHorizon ? '-dark' : '';
   return 'mobile-$bucket$darkSuffix.jpg';
 }

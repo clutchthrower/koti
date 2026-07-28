@@ -81,18 +81,12 @@ class _ThermostatOverlay extends StatefulWidget {
 class _ThermostatOverlayState extends State<_ThermostatOverlay> {
   double? _dragTemp; // non-null only while the slider is being dragged
 
-  Color _modeColor(String mode, dynamic tokens) {
-    switch (mode) {
-      case 'cool':
-        return tokens.puckCoolColor;
-      case 'heat':
-        return tokens.puckHeatColor;
-      case 'off':
-        return Colors.white70;
-      default:
-        return tokens.activeColor;
-    }
-  }
+  Color _modeColor(String mode, dynamic tokens) => switch (mode) {
+        'cool' => tokens.puckCoolColor,
+        'heat' => tokens.puckHeatColor,
+        'off' => Colors.white70,
+        _ => tokens.activeColor,
+      };
 
   String _modeLabel(String mode) =>
       mode.isEmpty ? mode : mode[0].toUpperCase() + mode.substring(1).replaceAll('_', ' ');
