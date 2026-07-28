@@ -42,12 +42,18 @@ class KotiHaServer {
   final String? Function() latestVersion;
   final SendspinPlayer? Function() sendspinController;
 
+  /// `custom_components/koti/bluetooth.py` calls this once per setup to
+  /// tell the tablet where its BLE scan data should be POSTed — see
+  /// `BleProxy.setWebhookId`.
+  final void Function(String webhookId) onSetBleWebhook;
+
   KotiHaServer({
     required this.id,
     required this.name,
     required this.currentVersion,
     required this.latestVersion,
     required this.sendspinController,
+    required this.onSetBleWebhook,
     this.port = defaultPort,
   }) {
     // Only an explicit stopSound cleared `_currentUrl` — a track that
@@ -163,6 +169,8 @@ class KotiHaServer {
         await _handleSendspinCommand(request, (p) => p.controllerNext());
       case 'sendspinPrevious':
         await _handleSendspinCommand(request, (p) => p.controllerPrevious());
+      case 'setBleWebhook':
+        await _handleSetBleWebhook(request, params);
       default:
         await _respondError(request, 'Unknown command: ${params['cmd']}');
     }
@@ -305,6 +313,17 @@ class KotiHaServer {
     } catch (e) {
       await _respondError(request, 'Command failed: $e');
     }
+  }
+
+  Future<void> _handleSetBleWebhook(
+      HttpRequest request, Map<String, String> params) async {
+    final webhookId = params['webhookId'];
+    if (webhookId == null || webhookId.isEmpty) {
+      await _respondError(request, 'Missing webhookId');
+      return;
+    }
+    onSetBleWebhook(webhookId);
+    await _respondJson(request, {'status': 'OK'});
   }
 
   Future<void> _respondJson(HttpRequest request, Map<String, dynamic> body) async {

@@ -36,8 +36,6 @@ import java.util.concurrent.atomic.AtomicLong
 class MainActivity : FlutterActivity() {
     private var bleSink: EventChannel.EventSink? = null
     private var scanCallback: ScanCallback? = null
-    private var nsdManager: NsdManager? = null
-    private var nsdListener: NsdManager.RegistrationListener? = null
 
     // Separate NSD registration for the Koti player's own discovery
     // advertisement, so it can run independently of the Bluetooth proxy's.
@@ -58,10 +56,12 @@ class MainActivity : FlutterActivity() {
         ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
     }
 
-    // Starts a passive-ish BLE scan streaming raw advertisements to Dart,
-    // and advertises the ESPHome API service over mDNS so Home Assistant
-    // discovers the tablet as a Bluetooth proxy.
-    private fun startBleProxy(name: String, friendlyName: String, mac: String, port: Int): String {
+    // Starts a passive-ish BLE scan streaming raw advertisements to Dart.
+    // Home Assistant discovery/routing for this data is handled entirely
+    // over the koti/native REST API + a webhook (see BleProxy/
+    // custom_components/koti/bluetooth.py) — no mDNS advertisement or
+    // ESPHome-protocol server here, unlike this method's previous version.
+    private fun startBleScan(): String {
         if (!hasBlePermissions()) {
             ActivityCompat.requestPermissions(this, blePermissions(), 4711)
             return "permission_requested"
@@ -88,42 +88,16 @@ class MainActivity : FlutterActivity() {
                 scanCallback
             )
         }
-
-        if (nsdListener == null) {
-            val info = NsdServiceInfo().apply {
-                serviceName = name
-                serviceType = "_esphomelib._tcp."
-                setPort(port)
-                setAttribute("version", "2026.6.0")
-                setAttribute("mac", mac.replace(":", "").lowercase())
-                setAttribute("platform", "HEMMA")
-                setAttribute("network", "wifi")
-                setAttribute("friendly_name", friendlyName)
-            }
-            nsdListener = object : NsdManager.RegistrationListener {
-                override fun onServiceRegistered(i: NsdServiceInfo?) {}
-                override fun onRegistrationFailed(i: NsdServiceInfo?, e: Int) {}
-                override fun onServiceUnregistered(i: NsdServiceInfo?) {}
-                override fun onUnregistrationFailed(i: NsdServiceInfo?, e: Int) {}
-            }
-            nsdManager = getSystemService(Context.NSD_SERVICE) as NsdManager
-            nsdManager?.registerService(info, NsdManager.PROTOCOL_DNS_SD, nsdListener)
-        }
         return "ok"
     }
 
-    private fun stopBleProxy() {
+    private fun stopBleScan() {
         try {
             val adapter = (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
             scanCallback?.let { adapter?.bluetoothLeScanner?.stopScan(it) }
         } catch (_: Exception) {
         }
         scanCallback = null
-        try {
-            nsdListener?.let { nsdManager?.unregisterService(it) }
-        } catch (_: Exception) {
-        }
-        nsdListener = null
     }
 
     // Real Android system volume (STREAM_MUSIC), not the audio player's own
@@ -481,18 +455,11 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(null)
                     }
-                    "startBleProxy" -> {
-                        result.success(
-                            startBleProxy(
-                                call.argument<String>("name") ?: "koti-tablet",
-                                call.argument<String>("friendlyName") ?: "Koti Tablet",
-                                call.argument<String>("mac") ?: "021122334455",
-                                call.argument<Int>("port") ?: 6053
-                            )
-                        )
+                    "startBleScan" -> {
+                        result.success(startBleScan())
                     }
-                    "stopBleProxy" -> {
-                        stopBleProxy()
+                    "stopBleScan" -> {
+                        stopBleScan()
                         result.success(null)
                     }
                     "setMusicVolume" -> {
@@ -567,7 +534,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
-        stopBleProxy()
+        stopBleScan()
         stopKotiDiscovery()
         stopSendspinAudioSink()
         stopSendspinDiscovery()

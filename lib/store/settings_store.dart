@@ -25,12 +25,12 @@ class SettingsStore extends ChangeNotifier {
   static const _kOnboarded = 'koti_onboarded';
   static const _kWeatherEntity = 'koti_weather_entity';
   static const _kDeviceId = 'koti_device_id';
-  static const _kWebhookId = 'koti_ha_webhook_id';
   static const _kUpdateChecks = 'koti_update_checks';
   static const _kBleProxy = 'koti_ble_proxy';
   static const _kMusicAssistant = 'koti_music_assistant';
   static const _kDeviceName = 'koti_device_name';
   static const _kSendspinEnabled = 'koti_sendspin_enabled';
+  static const _kBleWebhookId = 'koti_ble_webhook_id';
 
   String localUrl = '';
   String remoteUrl = '';
@@ -46,11 +46,9 @@ class SettingsStore extends ChangeNotifier {
   /// automatically (aggregate badges + whole-home device cards).
   RoomConfig? homeRoom;
 
-  /// Stable id identifying this tablet to HA's mobile_app integration,
-  /// and the webhook id HA returned when the tablet registered itself as
-  /// a device (null until registration succeeds).
+  /// Stable id identifying this tablet across the koti custom_component,
+  /// the Bluetooth proxy, and Sendspin's client_id.
   String deviceId = '';
-  String? haWebhookId;
 
   /// User-facing device name — used for the Bluetooth proxy's mDNS
   /// identity and the Koti player's own discovery advertisement, so two
@@ -64,8 +62,8 @@ class SettingsStore extends ChangeNotifier {
   String get _shortId => deviceId.length >= 6 ? deviceId.substring(0, 6) : deviceId;
 
   /// Feature switches: automatic update checks (GitHub releases), the
-  /// ESPHome-style Bluetooth proxy, and the full-page Music Assistant
-  /// control screen (off by default — most users don't run MA).
+  /// passive Bluetooth-advertisement proxy, and the full-page Music
+  /// Assistant control screen (off by default — most users don't run MA).
   bool updateChecksEnabled = true;
   bool bluetoothProxyEnabled = false;
   bool musicAssistantEnabled = false;
@@ -74,6 +72,12 @@ class SettingsStore extends ChangeNotifier {
   /// built-in player support, no custom provider/add-on install needed on
   /// the MA side at all.
   bool sendspinEnabled = false;
+
+  /// Where the Bluetooth proxy POSTs its scan batches — learned from
+  /// `custom_components/koti/bluetooth.py` (see `KotiHaServer`'s
+  /// `setBleWebhook` command) and persisted so an app restart doesn't lose
+  /// it before Home Assistant's own next reload happens to re-send it.
+  String? bleWebhookId;
 
   String? get accessToken => _accessToken;
 
@@ -124,12 +128,12 @@ class SettingsStore extends ChangeNotifier {
       deviceId = List.generate(32, (_) => rng.nextInt(16).toRadixString(16)).join();
       await prefs.setString(_kDeviceId, deviceId);
     }
-    haWebhookId = prefs.getString(_kWebhookId);
     _deviceName = prefs.getString(_kDeviceName) ?? '';
     updateChecksEnabled = prefs.getBool(_kUpdateChecks) ?? true;
     bluetoothProxyEnabled = prefs.getBool(_kBleProxy) ?? false;
     musicAssistantEnabled = prefs.getBool(_kMusicAssistant) ?? false;
     sendspinEnabled = prefs.getBool(_kSendspinEnabled) ?? false;
+    bleWebhookId = prefs.getString(_kBleWebhookId);
     notifyListeners();
   }
 
@@ -172,14 +176,10 @@ class SettingsStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setHaWebhookId(String? id) async {
-    haWebhookId = id;
+  Future<void> setBleWebhookId(String id) async {
+    bleWebhookId = id;
     final prefs = await SharedPreferences.getInstance();
-    if (id == null) {
-      await prefs.remove(_kWebhookId);
-    } else {
-      await prefs.setString(_kWebhookId, id);
-    }
+    await prefs.setString(_kBleWebhookId, id);
     notifyListeners();
   }
 
@@ -267,7 +267,7 @@ class SettingsStore extends ChangeNotifier {
     rooms = [];
     homeRoom = null;
     weatherEntityId = null;
-    haWebhookId = null;
+    bleWebhookId = null;
     notifyListeners();
   }
 

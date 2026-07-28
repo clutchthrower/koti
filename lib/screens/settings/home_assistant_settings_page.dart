@@ -43,10 +43,9 @@ class HomeAssistantSettingsPage extends StatelessWidget {
           KotiSwitchListTile(
             secondary: const Icon(Icons.bluetooth_searching),
             title: const Text('Bluetooth Proxy'),
-            subtitle: Text(
-                'Relays nearby Bluetooth devices (sensors, beacons) to Home Assistant, '
-                'like an ESPHome Bluetooth proxy. HA will discover "${settings.deviceName}" '
-                'under Devices & services — add it there.'),
+            subtitle: const Text(
+                'Relays nearby Bluetooth devices (sensors, beacons) to Home Assistant — '
+                'no extra setup needed, it registers under this tablet\'s own device.'),
             value: settings.bluetoothProxyEnabled,
             onChanged: settings.setBluetoothProxyEnabled,
           ),

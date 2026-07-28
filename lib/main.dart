@@ -9,7 +9,6 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import 'api/app_update.dart';
 import 'api/ble_proxy.dart';
-import 'api/ha_device_registration.dart';
 import 'api/ha_registry.dart';
 import 'api/ha_rest_client.dart';
 import 'api/ha_websocket_client.dart';
@@ -70,7 +69,7 @@ class _KotiAppState extends State<KotiApp> with WidgetsBindingObserver {
   String _currentVersion = '';
   Timer? _updateTimer;
 
-  final BleProxy _bleProxy = BleProxy();
+  late final BleProxy _bleProxy;
   bool _bleProxySyncing = false;
 
   // Always running — custom_components/koti's entities depend on this
@@ -84,6 +83,8 @@ class _KotiAppState extends State<KotiApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    _bleProxy = BleProxy(activeUrl: () => widget.settings.activeUrl)
+      ..setWebhookId(widget.settings.bleWebhookId);
     WidgetsBinding.instance.addObserver(this);
     widget.settings.addListener(_onSettingsChanged);
     _init();
@@ -116,10 +117,7 @@ class _KotiAppState extends State<KotiApp> with WidgetsBindingObserver {
     try {
       final want = widget.settings.bluetoothProxyEnabled;
       if (want && !_bleProxy.running) {
-        final status = await _bleProxy.start(
-          deviceId: widget.settings.deviceId,
-          deviceName: widget.settings.deviceName,
-        );
+        final status = await _bleProxy.start();
         if (status != 'ok') {
           await widget.settings.setBluetoothProxyEnabled(false);
         }
@@ -147,6 +145,10 @@ class _KotiAppState extends State<KotiApp> with WidgetsBindingObserver {
         currentVersion: () => _currentVersion,
         latestVersion: () => _pendingUpdate?.version,
         sendspinController: () => _sendspinServer?.player,
+        onSetBleWebhook: (id) {
+          _bleProxy.setWebhookId(id);
+          unawaited(widget.settings.setBleWebhookId(id));
+        },
       );
       try {
         await newServer.start();
@@ -242,31 +244,11 @@ class _KotiAppState extends State<KotiApp> with WidgetsBindingObserver {
       _helperStore = helperStore;
       _connectedUrl = url;
       _connectedToken = token;
-      // One-time: register this tablet as a device in HA (Settings →
-      // Devices & services → "Hemma Tablet"). Silent best-effort — the
-      // dashboard works fine without it.
-      if (widget.settings.haWebhookId == null) {
-        unawaited(_registerDevice(url, token));
-      }
     } else {
       _connectedUrl = null;
       _connectedToken = null;
     }
     if (mounted) setState(() {});
-  }
-
-  Future<void> _registerDevice(String url, String token) async {
-    try {
-      final webhookId = await HaDeviceRegistration.register(
-        baseUrl: url,
-        accessToken: token,
-        deviceId: widget.settings.deviceId,
-        deviceName: widget.settings.deviceName,
-      );
-      if (webhookId != null) await widget.settings.setHaWebhookId(webhookId);
-    } catch (_) {
-      // Registration is optional; retried on next launch.
-    }
   }
 
   @override

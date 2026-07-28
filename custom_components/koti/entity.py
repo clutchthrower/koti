@@ -19,10 +19,12 @@ def device_info_for(entry: ConfigEntry) -> DeviceInfo:
     device_name = entry.data.get("name", entry.title)
     return DeviceInfo(
         identifiers={(DOMAIN, entry.unique_id)},
-        # Same MAC the tablet's ESPHome Bluetooth-proxy registration uses —
-        # sharing a `connections` entry is how Home Assistant's device
-        # registry recognizes this and the ESPHome device as the same
-        # physical tablet and merges them into one Device instead of two.
+        # A stable, locally-administered MAC derived from the device id
+        # (see mac.py) — not used for any cross-integration Device merge
+        # today (the Bluetooth proxy registers its own scanner directly
+        # under this same Device via bluetooth.py, no separate MAC-matched
+        # Device involved), just a real identifier for anything else that
+        # might recognize this tablet by its MAC in the future.
         connections={(CONNECTION_NETWORK_MAC, mac_from(entry.unique_id))},
         name=device_name,
         manufacturer="Koti",

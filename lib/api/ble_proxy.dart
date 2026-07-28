@@ -1,95 +1,94 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 
-import 'esphome_server.dart';
+/// One BLE advertisement observed by the tablet's radio, ready to relay.
+class BleAdvertisement {
+  final String address; // "AA:BB:CC:DD:EE:FF"
+  final int rssi;
 
-/// Ties the pieces of the Bluetooth proxy together: the native BLE scanner
-/// (EventChannel), the ESPHome API server, and the mDNS advertisement that
-/// makes Home Assistant discover the tablet on Devices & services.
+  /// Raw advertising payload (AD structures) as seen over the air — parsed
+  /// server-side by `custom_components/koti/bluetooth.py` (via
+  /// `bluetooth_data_tools`), not here.
+  final Uint8List data;
+
+  /// Client epoch ms when this was captured — lets the server reconstruct
+  /// a reasonably accurate presentation time even if the POST itself lands
+  /// a little late.
+  final int timestampMs;
+
+  const BleAdvertisement({
+    required this.address,
+    required this.rssi,
+    required this.data,
+    required this.timestampMs,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'address': address,
+        'rssi': rssi,
+        'raw': base64Encode(data),
+        'timestamp': timestampMs,
+      };
+}
+
+/// Streams nearby BLE advertisements to Home Assistant so this tablet acts
+/// as a passive (presence-only, not connectable) Bluetooth proxy.
+///
+/// Deliberately does NOT implement the ESPHome native-API protocol the way
+/// this used to — that's what made HA's own `esphome` integration
+/// auto-discover the tablet as a second, unrelated Device. Instead, this
+/// just batches raw scan results (same ~300ms cadence as before) and POSTs
+/// them as JSON to a webhook `custom_components/koti/bluetooth.py`
+/// registers under this tablet's own existing Koti Device — see
+/// `KotiHaServer`'s `setBleWebhook` command for how this learns the
+/// webhook id to push to.
 class BleProxy {
   static const _channel = MethodChannel('koti/native');
   static const _scanChannel = EventChannel('koti/ble');
 
-  EsphomeServer? _server;
+  final String Function() activeUrl;
+
+  BleProxy({required this.activeUrl});
+
+  bool _running = false;
+  String? _webhookId;
   StreamSubscription? _scanSub;
   Timer? _flushTimer;
   final List<BleAdvertisement> _pending = [];
-  final Map<int, int> _lastForwarded = {};
+  final Map<String, int> _lastForwarded = {};
 
-  bool get running => _server != null;
+  bool get running => _running;
 
-  /// Derives a stable, locally-administered MAC from the install's device
-  /// id — ESPHome devices are identified by MAC, so it must not change.
-  static String macFrom(String deviceId, {int variant = 0}) {
-    final hex = (deviceId + '0' * 12).substring(0, 12).toUpperCase();
-    final pairs = [
-      variant == 0 ? '02' : '06',
-      for (var i = 2; i < 12; i += 2) hex.substring(i, i + 2),
-    ];
-    return pairs.join(':');
+  /// Where this tablet should POST its advertisement batches — learned
+  /// from Home Assistant (see `KotiHaServer`'s `setBleWebhook` command),
+  /// not decided locally. `null` until then; batches collected before it's
+  /// known are simply dropped rather than buffered indefinitely.
+  void setWebhookId(String? id) {
+    _webhookId = (id != null && id.isNotEmpty) ? id : null;
   }
 
-  /// mDNS service names must be unique per network and hostname-safe.
-  /// Slugifying the user's device name isn't enough on its own — two
-  /// tablets could still share a name (or both keep the default) — so the
-  /// device id suffix is always appended regardless of what the user typed.
-  static String slugFrom(String deviceName, String deviceId) {
-    final slug = deviceName
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
-        .replaceAll(RegExp(r'^-+|-+$'), '');
-    final shortId = deviceId.length >= 6 ? deviceId.substring(0, 6) : deviceId;
-    return '${slug.isEmpty ? 'koti-tablet' : slug}-$shortId';
-  }
+  Future<String> start() async {
+    if (_running) return 'ok';
+    final status = await _channel.invokeMethod<String>('startBleScan') ?? 'error';
+    if (status != 'ok') return status;
 
-  Future<String> start({required String deviceId, required String deviceName}) async {
-    if (running) return 'ok';
-    final mac = macFrom(deviceId);
-    final name = slugFrom(deviceName, deviceId);
-    final server = EsphomeServer(
-      name: name,
-      friendlyName: deviceName,
-      macAddress: mac,
-      bluetoothMacAddress: macFrom(deviceId, variant: 1),
-    );
-    await server.start();
-
-    final status = await _channel.invokeMethod<String>('startBleProxy', {
-          'name': name,
-          'friendlyName': deviceName,
-          'mac': mac,
-          'port': EsphomeServer.port,
-        }) ??
-        'error';
-    if (status != 'ok') {
-      await server.stop();
-      return status;
-    }
-
-    _server = server;
+    _running = true;
     _scanSub = _scanChannel.receiveBroadcastStream().listen(_onScan);
     _flushTimer = Timer.periodic(const Duration(milliseconds: 300), (_) {
-      if (_pending.isEmpty || !(server.hasSubscribers)) {
-        _pending.clear();
-        return;
-      }
-      server.sendAdvertisements(List.of(_pending));
-      _pending.clear();
+      unawaited(_flush());
     });
     return 'ok';
   }
 
   void _onScan(dynamic event) {
     final map = (event as Map).cast<String, dynamic>();
-    final addressStr = map['address'] as String? ?? '';
+    final address = map['address'] as String? ?? '';
     final rssi = map['rssi'] as int? ?? 0;
     final data = map['data'] as Uint8List? ?? Uint8List(0);
-    if (addressStr.isEmpty || data.isEmpty) return;
-
-    final address =
-        int.tryParse(addressStr.replaceAll(':', ''), radix: 16) ?? 0;
-    if (address == 0) return;
+    if (address.isEmpty || data.isEmpty) return;
 
     // Rate-limit per device: BLE beacons chatter several times a second,
     // and HA only needs a fresh reading every so often.
@@ -98,19 +97,36 @@ class BleProxy {
     if (now - last < 800) return;
     _lastForwarded[address] = now;
 
-    // Random static addresses have the two top bits set.
-    final firstOctet = (address >> 40) & 0xff;
-    final addressType = (firstOctet & 0xC0) == 0xC0 ? 1 : 0;
-
     if (_pending.length < 24) {
       _pending.add(BleAdvertisement(
         address: address,
         rssi: rssi,
-        addressType: addressType,
-        // ESPHome caps raw payloads at 62 bytes; Android pads its buffer
-        // to 62 with zeros already, but trim defensively.
-        data: data.length > 62 ? Uint8List.sublistView(data, 0, 62) : data,
+        data: data,
+        timestampMs: now,
       ));
+    }
+  }
+
+  Future<void> _flush() async {
+    final webhookId = _webhookId;
+    if (_pending.isEmpty || webhookId == null) {
+      _pending.clear();
+      return;
+    }
+    final batch = List<BleAdvertisement>.of(_pending);
+    _pending.clear();
+    try {
+      await http
+          .post(
+            Uri.parse('${activeUrl()}/api/webhook/$webhookId'),
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode(batch.map((a) => a.toJson()).toList()),
+          )
+          .timeout(const Duration(seconds: 5));
+    } catch (_) {
+      // Best-effort — dropped batches aren't retried, matching the old
+      // ESPHome path's behavior of simply not delivering to a momentarily
+      // unreachable Home Assistant.
     }
   }
 
@@ -120,10 +136,9 @@ class BleProxy {
     await _scanSub?.cancel();
     _scanSub = null;
     try {
-      await _channel.invokeMethod('stopBleProxy');
+      await _channel.invokeMethod('stopBleScan');
     } catch (_) {}
-    await _server?.stop();
-    _server = null;
+    _running = false;
     _pending.clear();
     _lastForwarded.clear();
   }

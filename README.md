@@ -59,10 +59,11 @@ Ready-made examples are in [`cards/examples/`](cards/examples/) and the
 full format is documented in [`docs/CARD_FORMAT.md`](docs/CARD_FORMAT.md).
 
 ### Tablet as a Bluetooth proxy
-Turn the tablet into an ESPHome Bluetooth proxy: it relays nearby BLE
-advertisements to Home Assistant over Wi-Fi. Home Assistant discovers it on
-**Devices & services** just like any other ESPHome Bluetooth proxy — no extra
-hardware needed.
+Turn the tablet into a passive Bluetooth proxy: it relays nearby BLE
+advertisements to Home Assistant over Wi-Fi, so BLE trackers/sensors near the
+tablet show up in Home Assistant with no extra hardware needed. Registers
+directly under the tablet's own existing Koti device — no separate Bluetooth
+proxy device, no manual pairing step.
 
 ### Tablet as a music speaker
 Enable Sendspin in **Settings → Music Assistant** and the tablet appears in
